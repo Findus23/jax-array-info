@@ -79,7 +79,7 @@ def visualize_sharding(shape: Sequence[int], sharding: Sharding, *,
 
     dims = list(range(len(shape)))
     if isinstance(sharding, PmapSharding):
-        console.print("[red bold] Output for PmapSharding")
+        console.print("[red bold]Output for PmapSharding might be incorrect")
         if len(shape) > 2:
             raise NotImplementedError("can only visualize PmapSharding with shapes with less than 3 dimensions")
     if len(shape) > 2 and not isinstance(sharding, PmapSharding):

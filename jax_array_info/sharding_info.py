@@ -12,6 +12,8 @@ from rich.text import Text
 def sharding_info(arr, name=None):
     if isinstance(arr, np.ndarray):
         return print_sharding_info(arr, None, name)
+    if not isinstance(arr, Array):
+        raise ValueError(f"is not a jax array, got {type(arr)}")
 
     def _info(sharding):
         print_sharding_info(arr, sharding, name)
