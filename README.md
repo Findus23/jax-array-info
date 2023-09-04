@@ -2,6 +2,10 @@
 
 This package contains two functions for debugging jax `Array`s:
 
+```bash
+pip install git+https://github.com/Findus23/jax-array-info.git
+```
+
 ```python
 from jax_array_info import sharding_info, sharding_vis
 ```
