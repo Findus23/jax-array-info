@@ -45,7 +45,6 @@ def get_sharded_dims(shape: Sequence[int], sharding: Sharding) -> list[int]:
     for i, sl in enumerate(slcs):
         if sl.start is not None:
             sharded_dims.append(i)
-            print(sl)
     return sharded_dims
 
 
