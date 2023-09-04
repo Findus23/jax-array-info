@@ -316,7 +316,6 @@ def test_indirectly_sharded(capsys):
     y is never explicitly sharded, but it seems like the sharding is back-propagated through the jit compiled function
     """
     arr = jax.numpy.zeros(shape=(16, 16, 16))
-    arr = jax.device_put(arr)
 
     def func(x):
         y = jax.numpy.zeros(shape=(16, 16, 16))
@@ -331,6 +330,30 @@ def test_indirectly_sharded(capsys):
 │ dtype: float32                                  │
 │ size: 16.0 KiB                                  │
 │ called in jit                                   │
+│ GSPMDSharding({devices=[1,8,1]0,1,2,3,4,5,6,7}) │
+│ axis 1 is sharded: CPU 0 contains 0:2 (of 16)   │
+╰─────────────────────────────────────────────────╯
+""".lstrip()
+
+
+def test_with_sharding_constraint(capsys):
+    """
+    y is never explicitly sharded, but it seems like the sharding is back-propagated through the jit compiled function
+    """
+    arr = jax.numpy.zeros(shape=(16, 16, 16))
+
+    def func(x):
+        return jax.lax.with_sharding_constraint(x, simple_sharding)
+
+    func = jax.jit(func)
+    arr = func(arr)
+    sharding_info(arr)
+
+    assert capsys.readouterr().out == """
+╭─────────────────────────────────────────────────╮
+│ shape: (16, 16, 16)                             │
+│ dtype: float32                                  │
+│ size: 16.0 KiB                                  │
 │ GSPMDSharding({devices=[1,8,1]0,1,2,3,4,5,6,7}) │
 │ axis 1 is sharded: CPU 0 contains 0:2 (of 16)   │
 ╰─────────────────────────────────────────────────╯
