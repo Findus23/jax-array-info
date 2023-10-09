@@ -6,8 +6,7 @@ import pytest
 from jax._src.sharding_impls import PositionalSharding
 from jax.experimental import mesh_utils
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
-
-from jax_array_info import sharding_info, sharding_vis
+from jax_array_info import sharding_info, sharding_vis, print_array_stats
 
 num_gpus = 8
 
@@ -337,9 +336,6 @@ def test_indirectly_sharded(capsys):
 
 
 def test_with_sharding_constraint(capsys):
-    """
-    y is never explicitly sharded, but it seems like the sharding is back-propagated through the jit compiled function
-    """
     arr = jax.numpy.zeros(shape=(16, 16, 16))
 
     def func(x):
@@ -358,6 +354,25 @@ def test_with_sharding_constraint(capsys):
 │ axis 1 is sharded: CPU 0 contains 0:2 (of 16)   │
 ╰─────────────────────────────────────────────────╯
 """.lstrip()
+
+
+def test_array_stats(capsys):
+    arr = jax.numpy.zeros(shape=(16, 16, 16))
+    arr2 = jax.device_put(jax.numpy.zeros(shape=(2, 16, 4)), simple_sharding)
+
+    print_array_stats()
+
+    assert capsys.readouterr().out == """
+             allocated jax arrays              
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
+┃ size     ┃ shape        ┃      sharded      ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
+│ 16.0 KiB │ (16, 16, 16) │                   │
+│ 64.0 B   │ (2, 16, 4)   │ ✔ (512.0 B total) │
+├──────────┼──────────────┼───────────────────┤
+│ 16.1 KiB │              │                   │
+└──────────┴──────────────┴───────────────────┘
+""".lstrip("\n")
 
 
 def test_non_array(capsys):
