@@ -8,6 +8,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
+from .utils import pretty_byte_size
+
 
 def sharding_info(arr, name=None):
     if isinstance(arr, np.ndarray):
@@ -19,13 +21,6 @@ def sharding_info(arr, name=None):
         print_sharding_info(arr, sharding, name)
 
     inspect_array_sharding(arr, callback=_info)
-
-
-def pretty_byte_size(nbytes: int):
-    for unit in ("", "Ki", "Mi", "Gi", "Ti"):
-        if abs(nbytes) < 1024.0:
-            return f"{nbytes:3.1f} {unit}B"
-        nbytes /= 1024.0
 
 
 def _print_sharding_info_raw(arr: Array, sharding: Sharding, console: Console):
