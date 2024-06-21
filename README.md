@@ -7,7 +7,7 @@ pip install git+https://github.com/Findus23/jax-array-info.git
 ```
 
 ```python
-from jax_array_info import sharding_info, sharding_vis
+from jax_array_info import sharding_info, sharding_vis, print_array_stats
 ```
 
 ## `sharding_info(arr)`
@@ -57,6 +57,31 @@ sharding_vis(array)
 │       │       │       │       │       │       │       │       │
 │       │       │       │       │       │       │       │       │
 └───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
+```
+
+## `print_array_stats()`
+
+Shows a nice overview over the all currently allocated arrays ordered by size. 
+
+**Disclaimer**: This uses `jax.live_arrays()` to get its information. There might be allocated arrays that are missing in this view. Also 
+
+```python
+arr = jax.numpy.zeros(shape=(16, 16, 16))
+arr2 = jax.device_put(jax.numpy.zeros(shape=(2, 16, 4)), NamedSharding(mesh, P(None, "gpus")))
+
+print_array_stats()
+```
+
+```text
+             allocated jax arrays              
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
+┃ size     ┃ shape        ┃      sharded      ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
+│ 16.0 KiB │ (16, 16, 16) │                   │
+│ 64.0 B   │ (2, 16, 4)   │ ✔ (512.0 B total) │
+├──────────┼──────────────┼───────────────────┤
+│ 16.1 KiB │              │                   │
+└──────────┴──────────────┴───────────────────┘
 ```
 
 ### Examples

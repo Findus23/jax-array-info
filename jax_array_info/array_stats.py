@@ -17,6 +17,7 @@ def print_array_stats():
     table = Table(title="allocated jax arrays")
     table.add_column("size")
     table.add_column("shape")
+    table.add_column("dtype")
     table.add_column("sharded", justify="center")
     total_size = 0
     for arr in array_stats_data():
@@ -26,7 +27,11 @@ def print_array_stats():
             file_size /= len(arr.sharding.device_set)
             is_sharded = True
         total_size += file_size
-        table.add_row(pretty_byte_size(file_size), str(arr.shape), f"✔ ({pretty_byte_size(arr.nbytes)} total)" if is_sharded else "")
+        table.add_row(
+            pretty_byte_size(file_size),
+            str(arr.shape),
+            str(arr.dtype),
+            f"✔ ({pretty_byte_size(arr.nbytes)} total)" if is_sharded else "")
     table.add_section()
     table.add_row(pretty_byte_size(total_size))
     console.print(table)
