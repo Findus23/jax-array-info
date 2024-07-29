@@ -63,7 +63,11 @@ def _print_sharding_info_raw(arr: Array, sharding: Sharding, console: Console):
     for i, sl in enumerate(slcs):
         if sl.start is None:
             continue
-        console.print(f"axis {i} is sharded: {device_kind} 0 contains {sl.start}:{sl.stop} (of {shape[i]})")
+        local_size = sl.stop - sl.start
+        global_size = shape[i]
+        num_shards = global_size // local_size
+        console.print(f"axis {i} is sharded: {device_kind} 0 contains {sl.start}:{sl.stop} (1/{num_shards})")
+        console.print(f"                   Total size: {global_size}")
 
 
 def print_sharding_info(arr: Array, sharding: Sharding, name=None):
