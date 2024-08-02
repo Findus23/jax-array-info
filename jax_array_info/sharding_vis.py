@@ -27,7 +27,7 @@ from jax._src.debugging import _raise_to_slice, _slice_to_chunk_idx, inspect_arr
 from jax.sharding import Sharding, PmapSharding
 
 
-def sharding_vis(arr, **kwargs):
+def sharding_vis(arr: Array, **kwargs):
     if not isinstance(arr, Array):
         raise ValueError(f"is not a jax array, got {type(arr)}")
 

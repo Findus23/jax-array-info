@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import rich
 from jax import Array
@@ -10,8 +12,10 @@ from rich.text import Text
 
 from .utils import pretty_byte_size
 
+SupportedArray = np.ndarray | Array
 
-def sharding_info(arr, name=None):
+
+def sharding_info(arr: SupportedArray, name: str = None):
     if isinstance(arr, np.ndarray):
         return print_sharding_info(arr, None, name)
     if not isinstance(arr, Array):
@@ -23,7 +27,7 @@ def sharding_info(arr, name=None):
     inspect_array_sharding(arr, callback=_info)
 
 
-def _print_sharding_info_raw(arr: Array, sharding: Sharding, console: Console):
+def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], console: Console):
     shape = arr.shape
     console.print(f"shape: {shape}")
     console.print(f"dtype: {arr.dtype}")
@@ -70,7 +74,7 @@ def _print_sharding_info_raw(arr: Array, sharding: Sharding, console: Console):
         console.print(f"                   Total size: {global_size}")
 
 
-def print_sharding_info(arr: Array, sharding: Sharding, name=None):
+def print_sharding_info(arr: SupportedArray, sharding: Optional[Sharding], name: str = None):
     console = rich.console.Console()
     with console.capture() as capture:
         _print_sharding_info_raw(arr, sharding, console)
