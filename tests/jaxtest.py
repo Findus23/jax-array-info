@@ -405,7 +405,7 @@ def test_with_sharding_constraint(capsys):
 │ shape: (16, 16, 16)                         │
 │ dtype: float32                              │
 │ size: 16.0 KiB                              │
-│ GSPMDSharding({devices=[1,8,1]<=[8]})       │
+│ NamedSharding: P(None, 'gpus')              │
 │ axis 1 is sharded: CPU 0 contains 0:2 (1/8) │
 │                    Total size: 16           │
 ╰─────────────────────────────────────────────╯
