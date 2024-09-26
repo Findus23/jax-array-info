@@ -22,13 +22,14 @@ sharding_info(array, "some_array")
 ```
 
 ```text
-╭────────────────── some_array ───────────────────╮
-│ shape: (128, 128, 128)                          │
-│ dtype: float32                                  │
-│ size: 8.0 MiB                                   │
-│ NamedSharding: P(None, 'gpus')                  │
-│ axis 1 is sharded: CPU 0 contains 0:16 (of 128) │
-╰─────────────────────────────────────────────────╯
+╭────────────────── some_array ────────────────╮
+│ shape: (128, 128, 128)                       │
+│ dtype: float32                               │
+│ size: 8.0 MiB                                │
+│ NamedSharding: P(None, 'gpus')               │
+│ axis 1 is sharded: CPU 0 contains 0:16 (1/8) │
+│                    Total size: 128           │
+╰──────────────────────────────────────────────╯
 ```
 
 ## `sharding_vis(arr)`
