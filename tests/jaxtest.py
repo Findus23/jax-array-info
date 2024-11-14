@@ -8,7 +8,7 @@ from jax._src.sharding_impls import PositionalSharding
 from jax.experimental import mesh_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
-from jax_array_info import sharding_info, sharding_vis, print_array_stats
+from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info
 
 num_gpus = 8
 
@@ -356,6 +356,62 @@ def test_shard_map(capsys):
 """.lstrip()
 
 
+def test_simple_array_info(capsys):
+    arr = jax.numpy.zeros(shape=(8 * 4, 8 * 4, 8 * 4), dtype=jax.numpy.complex64)
+    arr = jax.device_put(arr, simple_sharding)
+    simple_array_info(arr)
+    assert capsys.readouterr().out == """
+╭─────────────────────╮
+│ shape: (32, 32, 32) │
+│ dtype: complex64    │
+│ size: 256.0 KiB     │
+╰─────────────────────╯
+""".lstrip()
+
+
+def test_inside_shard_map(capsys):
+    arr = jax.numpy.zeros(shape=(16, 16))
+
+    def test(a):
+        sharding_info(a, "input")
+        return a ** 2
+
+    with pytest.raises(NotImplementedError) as e_info:
+        func_shard_map = shard_map(test, mesh=mesh, in_specs=P(None, 'gpus'), out_specs=P(None, 'gpus'))
+        out = func_shard_map(arr)
+
+
+def test_inside_shard_map_failing(capsys):
+    arr = jax.numpy.zeros(shape=(16, 16))
+
+    def test(a):
+        sharding_info(a, "input")
+        return a ** 2
+
+    with pytest.raises(NotImplementedError) as e_info:
+        func_shard_map = shard_map(test, mesh=mesh, in_specs=P(None, 'gpus'), out_specs=P(None, 'gpus'))
+        out = func_shard_map(arr)
+
+
+def test_inside_shard_map_simple(capsys):
+    arr = jax.numpy.zeros(shape=(16, 16))
+
+    def test(a):
+        simple_array_info(a, "input")
+        return a ** 2
+
+    func_shard_map = shard_map(test, mesh=mesh, in_specs=P(None, 'gpus'), out_specs=P(None, 'gpus'))
+    out = func_shard_map(arr)
+    assert capsys.readouterr().out == """
+╭──── input ─────╮
+│ shape: (16, 2) │
+│ dtype: float32 │
+│ size: 128.0 B  │
+│ called in jit  │
+╰────────────────╯
+""".lstrip()
+
+
 def test_indirectly_sharded(capsys):
     """
     y is never explicitly sharded, but it seems like the sharding is back-propagated through the jit compiled function
@@ -413,6 +469,7 @@ def test_with_sharding_constraint(capsys):
 
 
 def test_array_stats(capsys):
+    for buf in jax.live_arrays(): buf.delete()
     arr = jax.numpy.zeros(shape=(16, 16, 16))
     arr2 = jax.device_put(jax.numpy.zeros(shape=(2, 16, 4)), simple_sharding)
 

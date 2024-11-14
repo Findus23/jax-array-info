@@ -26,6 +26,9 @@ def sharding_info(arr: SupportedArray, name: str = None):
 
     inspect_array_sharding(arr, callback=_info)
 
+def simple_array_info(arr: SupportedArray, name: str = None):
+    return print_sharding_info(arr, None, name)
+
 
 def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], console: Console):
     shape = arr.shape
@@ -39,7 +42,6 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
     if not isinstance(arr, Array):
         raise ValueError(f"is not a jax array, got {type(arr)}")
 
-    device_kind = next(iter(sharding.device_set)).platform.upper()
     is_in_jit = isinstance(arr, Tracer)
     if not is_in_jit and not arr.is_fully_addressable:
         console.print("!is_fully_addressable")
@@ -47,7 +49,9 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
         console.print("[bright_black]called in jit")
     # if not arr.is_fully_replicated:
     #     console.print("!is_fully_replicated")
-
+    if sharding is None:
+        return
+    device_kind = next(iter(sharding.device_set)).platform.upper()
     if isinstance(sharding, SingleDeviceSharding):
         console.print("[red]not sharded")
     if isinstance(sharding, GSPMDSharding):
