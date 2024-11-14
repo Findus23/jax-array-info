@@ -234,14 +234,14 @@ def test_pmap(capsys):
     sharding_vis(arr)
 
     assert capsys.readouterr().out == """
-╭────────────────────────────────────────────────────────────────────────╮
-│ shape: (8, 24)                                                         │
-│ dtype: complex64                                                       │
-│ size: 1.5 KiB                                                          │
-│ PmapSharding(sharding_spec=ShardingSpec((Unstacked(8), NoSharding()),  │
-│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],          │
-│ device_platform=CPU, device_shape=(8,))                                │
-╰────────────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────╮
+│ shape: (8, 24)                                                       │
+│ dtype: complex64                                                     │
+│ size: 1.5 KiB                                                        │
+│ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
+│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
+│ device_platform=CPU, device_shape=(8,))                              │
+╰──────────────────────────────────────────────────────────────────────╯
 Output for PmapSharding might be incorrect
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                                  CPU 0                                  │
