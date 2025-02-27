@@ -26,8 +26,17 @@ def sharding_info(arr: SupportedArray, name: str = None):
 
     inspect_array_sharding(arr, callback=_info)
 
+
 def simple_array_info(arr: SupportedArray, name: str = None):
-    return print_sharding_info(arr, None, name)
+    sharding = None
+    if isinstance(arr, Array):
+        try:
+            # if we are outside of jit, we can also read the sharding directly without inspect_array_sharding()
+            # and therefore still show it even with simple_array_info()
+            sharding = arr.sharding
+        except AttributeError:
+            sharding = None
+    return print_sharding_info(arr, sharding, name)
 
 
 def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], console: Console):

@@ -353,11 +353,14 @@ def test_simple_array_info(capsys):
     arr = jax.device_put(arr, simple_sharding)
     simple_array_info(arr)
     assert capsys.readouterr().out == """
-╭─────────────────────╮
-│ shape: (32, 32, 32) │
-│ dtype: complex64    │
-│ size: 256.0 KiB     │
-╰─────────────────────╯
+╭─────────────────────────────────────────────╮
+│ shape: (32, 32, 32)                         │
+│ dtype: complex64                            │
+│ size: 256.0 KiB                             │
+│ NamedSharding: P(None, 'gpus')              │
+│ axis 1 is sharded: CPU 0 contains 0:4 (1/8) │
+│                    Total size: 32           │
+╰─────────────────────────────────────────────╯
 """.lstrip()
 
 
