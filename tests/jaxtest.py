@@ -200,15 +200,7 @@ def test_in_jit(capsys):
 │ dtype: complex64                            │
 │ size: 256.0 KiB                             │
 │ called in jit                               │
-│ PositionalSharding:                         │
-│ [[[{CPU 0}]                                 │
-│   [{CPU 1}]                                 │
-│   [{CPU 2}]                                 │
-│   [{CPU 3}]                                 │
-│   [{CPU 4}]                                 │
-│   [{CPU 5}]                                 │
-│   [{CPU 6}]                                 │
-│   [{CPU 7}]]]                               │
+│ NamedSharding: P(None, 'gpus')              │
 │ axis 1 is sharded: CPU 0 contains 0:4 (1/8) │
 │                    Total size: 32           │
 ╰─────────────────────────────────────────────╯
@@ -431,15 +423,7 @@ def test_indirectly_sharded(capsys):
 │ dtype: float32                              │
 │ size: 16.0 KiB                              │
 │ called in jit                               │
-│ PositionalSharding:                         │
-│ [[[{CPU 0}]                                 │
-│   [{CPU 1}]                                 │
-│   [{CPU 2}]                                 │
-│   [{CPU 3}]                                 │
-│   [{CPU 4}]                                 │
-│   [{CPU 5}]                                 │
-│   [{CPU 6}]                                 │
-│   [{CPU 7}]]]                               │
+│ NamedSharding: P(None, 'gpus')              │
 │ axis 1 is sharded: CPU 0 contains 0:2 (1/8) │
 │                    Total size: 16           │
 ╰─────────────────────────────────────────────╯
