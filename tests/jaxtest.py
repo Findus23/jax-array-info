@@ -452,6 +452,27 @@ def test_with_sharding_constraint(capsys):
 """.lstrip()
 
 
+def test_sharding_outer_product(capsys):
+    arr = jax.numpy.arange(16)
+    arr = jax.device_put(arr, NamedSharding(mesh, P("gpus")))
+
+    product = jax.numpy.outer(arr, arr)
+    assert product.shape == (16, 16)
+
+    sharding_info(product)
+
+    assert capsys.readouterr().out == """
+╭─────────────────────────────────────────────╮
+│ shape: (16, 16)                             │
+│ dtype: int32                                │
+│ size: 1.0 KiB                               │
+│ NamedSharding: P('gpus',)                   │
+│ axis 0 is sharded: CPU 0 contains 0:2 (1/8) │
+│                    Total size: 16           │
+╰─────────────────────────────────────────────╯
+""".lstrip()
+
+
 def test_array_stats(capsys):
     for buf in jax.live_arrays(): buf.delete()
     arr = jax.numpy.zeros(shape=(16, 16, 16))
