@@ -1,11 +1,14 @@
 import os
 from functools import partial
+from typing import Callable
 
 import jax.numpy
 import numpy as np
 import pytest
+from jax._src.config import use_shardy_partitioner
 from jax._src.sharding_impls import PositionalSharding
 from jax.experimental import mesh_utils
+from jax.experimental.custom_partitioning import custom_partitioning
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info
@@ -18,6 +21,7 @@ devices = mesh_utils.create_device_mesh((num_gpus,))
 mesh = Mesh(devices, axis_names=('gpus',))
 
 simple_sharding = NamedSharding(mesh, P(None, "gpus"))
+simple_sharding1d = NamedSharding(mesh, P("gpus"))
 
 devices_2d = mesh_utils.create_device_mesh((num_gpus // 2, 2))
 mesh_2d = Mesh(devices_2d, axis_names=('a', 'b'))
@@ -233,6 +237,8 @@ def test_pmap(capsys):
 │ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
 │ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
 │ device_platform=CPU, device_shape=(8,))                              │
+│ axis 0 is sharded: CPU 0 contains 0:1 (1/8)                          │
+│                    Total size: 8                                     │
 ╰──────────────────────────────────────────────────────────────────────╯
 Output for PmapSharding might be incorrect
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -252,6 +258,197 @@ Output for PmapSharding might be incorrect
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                  CPU 7                                  │
 └─────────────────────────────────────────────────────────────────────────┘
+""".lstrip()
+
+
+def test_custom_rfftn_sharded(capsys):
+    """
+    more complex example of efficiently calculating an (i)rfftn
+    of sharded arrays using custom_partitioning
+
+    loosely based on the example from https://docs.jax.dev/en/latest/jax.experimental.custom_partitioning.html
+    and xfft from https://github.com/NVIDIA/CUDALibrarySamples/tree/master/cuFFTMp/JAX_FFT
+    """
+
+    def fft_partitioner(fft_func: Callable[[jax.Array], jax.Array], partition_spec: P, sharding_rule=None):
+        @custom_partitioning
+        def func(x):
+            return fft_func(x)
+
+        def supported_sharding(sharding, shape):
+            return NamedSharding(sharding.mesh, partition_spec)
+
+        def partition(mesh, arg_shapes, result_shape):
+            arg_shardings = jax.tree.map(lambda x: x.sharding, arg_shapes)
+            return mesh, fft_func, supported_sharding(arg_shardings[0], arg_shapes[0]), (
+                supported_sharding(arg_shardings[0], arg_shapes[0]),)
+
+        def infer_sharding_from_operands(mesh, arg_shapes, result_shape):
+            arg_shardings = jax.tree.map(lambda x: x.sharding, arg_shapes)
+            return supported_sharding(arg_shardings[0], arg_shapes[0])
+
+        func.def_partition(
+            infer_sharding_from_operands=infer_sharding_from_operands,
+            partition=partition,
+            sharding_rule=sharding_rule
+        )
+        return func
+
+    def _fftn_XY(x):
+        return jax.numpy.fft.fftn(x, axes=[0, 1])
+
+    def _rfft_Z(x):
+        return jax.numpy.fft.rfft(x, axis=2)
+
+    def _ifftn_XY(x):
+        return jax.numpy.fft.ifftn(x, axes=[0, 1])
+
+    def _irfft_Z(x):
+        return jax.numpy.fft.irfft(x, axis=2)
+
+    fftn_XY = fft_partitioner(_fftn_XY, P(None, None, "gpus"), sharding_rule="x y z -> x y z")
+    rfft_Z = fft_partitioner(_rfft_Z, P(None, "gpus"), sharding_rule="x y z -> x y z_new")
+    ifftn_XY = fft_partitioner(_ifftn_XY, P(None, None, "gpus"))
+    irfft_Z = fft_partitioner(_irfft_Z, P(None, "gpus"))
+
+    def _rfftn(x):
+        x = rfft_Z(x)
+        x = fftn_XY(x)
+        return x
+
+    def _irfftn(x):
+        x = ifftn_XY(x)
+        x = irfft_Z(x)
+        return x
+
+    rfftn = jax.jit(
+        _rfftn,
+        in_shardings=simple_sharding,
+        out_shardings=simple_sharding,
+    )
+    rfftn_original = jax.jit(
+        jax.numpy.fft.rfftn,
+        in_shardings=simple_sharding,
+        out_shardings=simple_sharding
+    )
+
+    input_array = jax.numpy.zeros(shape=(128, 128, 128))
+    input_array = jax.device_put(input_array, simple_sharding)
+    sharding_info(input_array, "input_array")
+
+    hlo = rfftn.lower(input_array).compile().as_text()
+    hlo_original = rfftn_original.lower(input_array).compile().as_text()
+    assert "dynamic-slice" not in hlo
+    assert "all-gather" not in hlo
+    assert "dynamic-slice" in hlo_original
+    assert "all-gather" in hlo_original
+
+    output_array = rfftn(input_array)
+    sharding_info(output_array, "output_array")
+    assert capsys.readouterr().out == """
+╭──────────────── input_array ─────────────────╮
+│ shape: (128, 128, 128)                       │
+│ dtype: float32                               │
+│ size: 8.0 MiB                                │
+│ NamedSharding: P(None, 'gpus')               │
+│ axis 1 is sharded: CPU 0 contains 0:16 (1/8) │
+│                    Total size: 128           │
+╰──────────────────────────────────────────────╯
+╭──────────────── output_array ────────────────╮
+│ shape: (128, 128, 65)                        │
+│ dtype: complex64                             │
+│ size: 8.1 MiB                                │
+│ NamedSharding: P(None, 'gpus')               │
+│ axis 1 is sharded: CPU 0 contains 0:16 (1/8) │
+│                    Total size: 128           │
+╰──────────────────────────────────────────────╯
+""".lstrip()
+
+    # with shardy instead the `sharding_rule` is used to give the exact same result
+    with use_shardy_partitioner(True):
+        rfftn_shardy = jax.jit(
+            _rfftn,
+            in_shardings=simple_sharding,
+            out_shardings=simple_sharding,
+        )
+        output_array_shardy = rfftn_shardy(input_array)
+        sharding_info(output_array_shardy, "output_array_shardy")
+        assert capsys.readouterr().out == """
+╭──────────── output_array_shardy ─────────────╮
+│ shape: (128, 128, 65)                        │
+│ dtype: complex64                             │
+│ size: 8.1 MiB                                │
+│ NamedSharding: P(None, 'gpus')               │
+│ axis 1 is sharded: CPU 0 contains 0:16 (1/8) │
+│                    Total size: 128           │
+╰──────────────────────────────────────────────╯
+""".lstrip()
+
+
+def test_eval_shape(capsys):
+    """
+    one can also print the output of a jitted function without ever executing it by using eval_shape
+    """
+
+    def simple_function(a):
+        return jax.numpy.zeros(shape=(128, 128, 128)) * a
+
+    simple_function = jax.jit(simple_function, out_shardings=simple_sharding)
+
+    expected_output = """
+╭──────────────────────────────────────────────╮
+│ shape: (128, 128, 128)                       │
+│ dtype: float32                               │
+│ ShapeDtypeStruct                             │
+│ NamedSharding: P(None, 'gpus')               │
+│ axis 1 is sharded: CPU 0 contains 0:16 (1/8) │
+│                    Total size: 128           │
+╰──────────────────────────────────────────────╯
+""".lstrip()
+
+    input_array = jax.numpy.zeros(shape=(128, 128, 128))
+
+    output_eval: jax.ShapeDtypeStruct = simple_function.eval_shape(input_array)
+
+    sharding_info(output_eval)
+    assert capsys.readouterr().out == expected_output
+
+    # this even works without ever allocating the input arrays
+
+    input_placeholder = jax.ShapeDtypeStruct((128, 128, 128), jax.numpy.float32)
+
+    output_eval_placeholder: jax.ShapeDtypeStruct = simple_function.eval_shape(input_placeholder)
+
+    sharding_info(output_eval_placeholder)
+    assert capsys.readouterr().out == expected_output
+
+
+def test_scalar(capsys):
+    """
+    scalars in jax are arrays with shape (), so they should work the same
+    """
+    some_scalar_value = jax.numpy.asarray(42)
+    sharding_info(some_scalar_value, "some_scalar_value")
+
+    some_array = jax.numpy.array([1, 2, 3])
+    sharding_info(some_array[0], "some_array[0]")
+
+    assert capsys.readouterr().out == """
+╭─ some_scalar_value ─╮
+│ shape: ()           │
+│ dtype: int32        │
+│ value: 42           │
+│ size: 4.0 B         │
+│ weakly-typed        │
+│ not sharded         │
+╰─────────────────────╯
+╭─ some_array[0] ─╮
+│ shape: ()       │
+│ dtype: int32    │
+│ value: 1        │
+│ size: 4.0 B     │
+│ not sharded     │
+╰─────────────────╯
 """.lstrip()
 
 
@@ -364,18 +561,6 @@ def test_simple_array_info(capsys):
 """.lstrip()
 
 
-def test_inside_shard_map(capsys):
-    arr = jax.numpy.zeros(shape=(16, 16))
-
-    def test(a):
-        sharding_info(a, "input")
-        return a ** 2
-
-    with pytest.raises(NotImplementedError) as e_info:
-        func_shard_map = shard_map(test, mesh=mesh, in_specs=P(None, 'gpus'), out_specs=P(None, 'gpus'))
-        out = func_shard_map(arr)
-
-
 def test_inside_shard_map_failing(capsys):
     arr = jax.numpy.zeros(shape=(16, 16))
 
@@ -432,6 +617,29 @@ def test_indirectly_sharded(capsys):
 ╰─────────────────────────────────────────────╯
 """.lstrip()
 
+    # doing this with shardy seems to not print the back-propagated sharding
+    with use_shardy_partitioner(True):
+        func = jax.jit(func, out_shardings=simple_sharding)
+        arr = func(arr)
+        sharding_info(arr, "output")
+        assert capsys.readouterr().out == """
+╭─────────────────────╮
+│ shape: (16, 16, 16) │
+│ dtype: float32      │
+│ size: 16.0 KiB      │
+│ called in jit       │
+│ NamedSharding: P()  │
+╰─────────────────────╯
+╭────────────────── output ───────────────────╮
+│ shape: (16, 16, 16)                         │
+│ dtype: float32                              │
+│ size: 16.0 KiB                              │
+│ NamedSharding: P(None, 'gpus')              │
+│ axis 1 is sharded: CPU 0 contains 0:2 (1/8) │
+│                    Total size: 16           │
+╰─────────────────────────────────────────────╯
+""".lstrip()
+
 
 def test_with_sharding_constraint(capsys):
     arr = jax.numpy.zeros(shape=(16, 16, 16))
@@ -476,14 +684,99 @@ def test_sharding_outer_product(capsys):
 """.lstrip()
 
 
+def test_nondefault_device(capsys):
+    some_array = jax.numpy.zeros(16)
+    some_array_on_one_device = jax.device_put(some_array, devices[2])
+    sharding_info(some_array_on_one_device)
+
+    assert capsys.readouterr().out == """
+╭────────────────────╮
+│ shape: (16,)       │
+│ dtype: float32     │
+│ size: 64.0 B       │
+│ device: TFRT_CPU_2 │
+│ not sharded        │
+╰────────────────────╯
+""".lstrip()
+
+
+def test_device_put_replicated(capsys):
+    some_array = jax.numpy.zeros(16)
+    replicated_array = jax.device_put_replicated(some_array, jax.devices())
+    sharding_info(replicated_array)
+
+    assert capsys.readouterr().out == """
+╭──────────────────────────────────────────────────────────────────────╮
+│ shape: (8, 16)                                                       │
+│ dtype: float32                                                       │
+│ size: 512.0 B                                                        │
+│ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
+│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
+│ device_platform=CPU, device_shape=(8,))                              │
+╰──────────────────────────────────────────────────────────────────────╯
+""".lstrip()
+
+
+def test_device_put_replicated(capsys):
+    list_of_arrays = []
+    for i in range(len(jax.devices())):
+        some_array = jax.numpy.full((3,), i)
+        list_of_arrays.append(some_array)
+    replicated_array = jax.device_put_sharded(list_of_arrays, jax.devices())
+    sharding_info(replicated_array)
+    reference = jax.numpy.array([[0, 0, 0],
+                                 [1, 1, 1],
+                                 [2, 2, 2],
+                                 [3, 3, 3],
+                                 [4, 4, 4],
+                                 [5, 5, 5],
+                                 [6, 6, 6],
+                                 [7, 7, 7]])
+    assert jax.numpy.all(replicated_array == reference)
+
+    assert capsys.readouterr().out == """
+╭──────────────────────────────────────────────────────────────────────╮
+│ shape: (8, 3)                                                        │
+│ dtype: int32                                                         │
+│ size: 96.0 B                                                         │
+│ weakly-typed                                                         │
+│ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
+│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
+│ device_platform=CPU, device_shape=(8,))                              │
+│ axis 0 is sharded: CPU 0 contains 0:1 (1/8)                          │
+│                    Total size: 8                                     │
+╰──────────────────────────────────────────────────────────────────────╯
+""".lstrip()
+
+
+def test_make_array_from_single_device_arrays(capsys):
+    list_of_arrays = []
+    for i, device in enumerate(jax.devices()):
+        some_array = jax.numpy.full((3, 2), i)
+        some_array = jax.device_put(some_array, device)
+        list_of_arrays.append(some_array)
+    replicated_array = jax.make_array_from_single_device_arrays((3, 16), simple_sharding, list_of_arrays)
+    sharding_info(replicated_array)
+    assert capsys.readouterr().out == """
+╭─────────────────────────────────────────────╮
+│ shape: (3, 16)                              │
+│ dtype: int32                                │
+│ size: 192.0 B                               │
+│ NamedSharding: P(None, 'gpus')              │
+│ axis 1 is sharded: CPU 0 contains 0:2 (1/8) │
+│                    Total size: 16           │
+╰─────────────────────────────────────────────╯
+""".lstrip()
+
+
 def test_array_stats(capsys):
     for buf in jax.live_arrays(): buf.delete()
     arr = jax.numpy.zeros(shape=(16, 16, 16))
     arr2 = jax.device_put(jax.numpy.zeros(shape=(2, 16, 4)), simple_sharding)
 
-    some_scalar_value1=jax.numpy.array(4)
-    some_scalar_value2=jax.numpy.array(42)
-    some_scalar_value3=jax.numpy.array(42.4)
+    some_scalar_value1 = jax.numpy.array(4)
+    some_scalar_value2 = jax.numpy.array(42)
+    some_scalar_value3 = jax.numpy.array(42.4)
 
     print_array_stats()
 
@@ -509,7 +802,3 @@ def test_non_array(capsys):
         sharding_info(arr)
     with pytest.raises(ValueError, match="is not a jax array, got <class 'list'>"):
         sharding_vis(arr)
-
-
-if __name__ == '__main__':
-    test_indirectly_sharded(None)
