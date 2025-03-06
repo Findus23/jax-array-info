@@ -481,6 +481,10 @@ def test_array_stats(capsys):
     arr = jax.numpy.zeros(shape=(16, 16, 16))
     arr2 = jax.device_put(jax.numpy.zeros(shape=(2, 16, 4)), simple_sharding)
 
+    some_scalar_value1=jax.numpy.array(4)
+    some_scalar_value2=jax.numpy.array(42)
+    some_scalar_value3=jax.numpy.array(42.4)
+
     print_array_stats()
 
     assert capsys.readouterr().out == """
@@ -490,6 +494,9 @@ def test_array_stats(capsys):
 ┡━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━┩
 │ 16.0 KiB │ (16, 16, 16) │ float32 │                   │
 │ 64.0 B   │ (2, 16, 4)   │ float32 │ ✔ (512.0 B total) │
+├──────────┼──────────────┼─────────┼───────────────────┤
+│ 4.0 B    │ 1×s          │ float32 │                   │
+│ 8.0 B    │ 2×s          │ int32   │                   │
 ├──────────┼──────────────┼─────────┼───────────────────┤
 │ 16.1 KiB │              │         │                   │
 └──────────┴──────────────┴─────────┴───────────────────┘
