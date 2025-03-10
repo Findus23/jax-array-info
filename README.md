@@ -100,4 +100,4 @@ sharding_vis(array)
 
 ## Examples
 
-You can find many examples of how arrays can be sharded in jax and how the output would look like in [`tests/jaxtest.py`](./tests/jaxtest.py). 
+You can find many examples of how arrays can be sharded in jax and how the output would look like in [`tests/test_jax.py`](./tests/test_jax.py). 
