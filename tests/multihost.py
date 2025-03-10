@@ -8,7 +8,8 @@ from typing import Callable
 import jax.distributed
 import numpy as onp
 from jax.experimental import mesh_utils
-from jax.experimental.multihost_utils import process_allgather
+from jax.experimental.multihost_utils import process_allgather, broadcast_one_to_all, host_local_array_to_global_array, \
+    global_array_to_host_local_array
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 
@@ -106,7 +107,7 @@ def run_multihost_closure():
         exit(expected_failure_returncode)
 
 
-def host_subset(array: onp.ndarray, size: int):
+def host_subset(array: onp.ndarray | jax.Array, size: int):
     """
     for now hard-coded to shard along axis 1
     """
@@ -140,6 +141,28 @@ def run_numpy_to_sharded_array():
     sharding_info(distributed_array, "distributed_array")
 
 
+def run_host_local_array_to_global_array():
+    """
+    `host_local_array_to_global_array` does the same as distribute_array above,
+    but with a simpler syntax (and requiring a continuous mesh)
+    """
+    size = 100
+    original_array = jax.numpy.arange(size)
+    host_id = jax.process_index()
+
+    start = host_id * size // num_processes
+    end = (host_id + 1) * size // num_processes
+    local_subset = original_array[start:end]
+
+    global_arr = host_local_array_to_global_array(local_subset, mesh, P("gpus"))
+    sharding_info(global_arr, "global_array")
+    assert original_array.shape == global_arr.shape
+
+    # check that the array didn't change
+    collected_again = process_allgather(global_arr)
+    assert jax.numpy.allclose(collected_again, original_array)
+
+
 def run_process_allgather():
     """
     Test using `process_allgather()`
@@ -168,6 +191,45 @@ def run_shard_map():
     out = func(arr)
     assert out.shape[1] == arr.shape[1] // num_processes
     sharding_info(out, "out")
+
+
+def run_broadcast_one_to_all():
+    arr = jax.numpy.zeros(128)  # unsharded
+    if jax.process_index() == 0:
+        arr = arr.at[0].set(100)
+    arr = broadcast_one_to_all(arr)
+    assert arr[0] == 100  # now arr is the same on all devices
+
+
+def run_custom_rfftn_multigpu():
+    """
+    This is the same as test_jax.py::test_custom_rfftn_sharded, but run on multihost
+    """
+    from fft_utils import _rfftn
+    rfftn = jax.jit(
+        _rfftn,
+        in_shardings=simple_sharding,
+        out_shardings=simple_sharding,
+    )
+    rfftn_original = jax.jit(
+        jax.numpy.fft.rfftn,
+        in_shardings=simple_sharding,
+        out_shardings=simple_sharding
+    )
+
+    input_array = jax.numpy.zeros(shape=(128, 128, 128))
+    input_array = jax.device_put(input_array, simple_sharding)
+    sharding_info(input_array, "input_array")
+
+    hlo = rfftn.lower(input_array).compile().as_text()
+    hlo_original = rfftn_original.lower(input_array).compile().as_text()
+    assert "dynamic-slice" not in hlo
+    assert "all-gather" not in hlo
+    assert "dynamic-slice" in hlo_original
+    assert "all-gather" in hlo_original
+    output_array = rfftn(input_array)
+    sharding_info(output_array, "output_array")
+
 
 
 if __name__ == '__main__':

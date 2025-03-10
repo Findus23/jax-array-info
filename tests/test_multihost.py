@@ -150,6 +150,21 @@ def test_numpy_to_sharded_array():
     check_multihost("run_numpy_to_sharded_array", expected_output)
 
 
+def test_host_local_array_to_global_array():
+    expected_output = """
+╭──────────────── global_array ────────────────╮
+│ shape: (100,)                                │
+│ dtype: int32                                 │
+│ size: 400.0 B                                │
+│ !is_fully_addressable                        │
+│ NamedSharding: P('gpus',)                    │
+│ axis 0 is sharded: CPU 0 contains 0:25 (1/4) │
+│                    Total size: 100           │
+╰──────────────────────────────────────────────╯
+""".lstrip()
+    check_multihost("run_host_local_array_to_global_array", expected_output)
+
+
 def test_process_allgather():
     expected_output = """
 ╭───── arr_np ──────╮
@@ -179,6 +194,34 @@ def test_shard_map():
 ╰───────────────────────╯
 """.lstrip()
     check_multihost("run_shard_map", expected_output)
+
+
+def test_broadcast_one_to_all():
+    check_multihost("run_broadcast_one_to_all", "")
+
+
+def test_custom_rfftn_multigpu():
+    expected_output = """
+╭──────────────── input_array ─────────────────╮
+│ shape: (128, 128, 128)                       │
+│ dtype: float32                               │
+│ size: 8.0 MiB                                │
+│ !is_fully_addressable                        │
+│ NamedSharding: P(None, 'gpus')               │
+│ axis 1 is sharded: CPU 0 contains 0:16 (1/8) │
+│                    Total size: 128           │
+╰──────────────────────────────────────────────╯
+╭──────────────── output_array ────────────────╮
+│ shape: (128, 128, 65)                        │
+│ dtype: complex64                             │
+│ size: 8.1 MiB                                │
+│ !is_fully_addressable                        │
+│ NamedSharding: P(None, 'gpus')               │
+│ axis 1 is sharded: CPU 0 contains 0:16 (1/8) │
+│                    Total size: 128           │
+╰──────────────────────────────────────────────╯
+""".lstrip()
+    check_multihost("run_custom_rfftn_multigpu", expected_output, num_processes=8)
 
 
 if __name__ == '__main__':
