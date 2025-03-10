@@ -11,6 +11,7 @@ from jax.experimental import mesh_utils
 from jax.experimental.custom_partitioning import custom_partitioning
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+
 from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info
 
 num_gpus = 8
@@ -73,7 +74,7 @@ def test_not_sharded(capsys):
 """.lstrip()
 
 
-def test_device_put_sharded(capsys):
+def test_device_put(capsys):
     arr = jax.numpy.zeros(shape=(8 * 4, 8 * 4, 8 * 4), dtype=jax.numpy.complex64)
     arr = jax.device_put(arr, simple_sharding)
     sharding_info(arr)
@@ -684,6 +685,35 @@ def test_sharding_outer_product(capsys):
 """.lstrip()
 
 
+def test_sharded_closure(capsys):
+    """
+    While not great code style, sharding also works in constant arrays
+    that are not passed to functions.
+
+    This does not work in a multihost setup.
+    """
+    arr = jax.numpy.zeros((16, 16))
+    arr = jax.device_put(arr, NamedSharding(mesh, P("gpus")))
+
+    def some_function():
+        return arr * 5
+
+    some_function = jax.jit(some_function, out_shardings=simple_sharding)
+
+    out = some_function()
+    sharding_info(out)
+    assert capsys.readouterr().out == """
+╭─────────────────────────────────────────────╮
+│ shape: (16, 16)                             │
+│ dtype: float32                              │
+│ size: 1.0 KiB                               │
+│ NamedSharding: P(None, 'gpus')              │
+│ axis 1 is sharded: CPU 0 contains 0:2 (1/8) │
+│                    Total size: 16           │
+╰─────────────────────────────────────────────╯
+""".lstrip()
+
+
 def test_nondefault_device(capsys):
     some_array = jax.numpy.zeros(16)
     some_array_on_one_device = jax.device_put(some_array, devices[2])
@@ -713,11 +743,13 @@ def test_device_put_replicated(capsys):
 │ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
 │ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
 │ device_platform=CPU, device_shape=(8,))                              │
+│ axis 0 is sharded: CPU 0 contains 0:1 (1/8)                          │
+│                    Total size: 8                                     │
 ╰──────────────────────────────────────────────────────────────────────╯
 """.lstrip()
 
 
-def test_device_put_replicated(capsys):
+def test_device_put_sharded(capsys):
     list_of_arrays = []
     for i in range(len(jax.devices())):
         some_array = jax.numpy.full((3,), i)
@@ -794,6 +826,22 @@ def test_array_stats(capsys):
 │ 16.1 KiB │              │         │                   │
 └──────────┴──────────────┴─────────┴───────────────────┘
 """.lstrip("\n")
+
+
+def test_mesh_variable():
+    """
+    Different Mesh objects are equivalent as long as they have the same properties.
+    Therefore, one should be able to create new one instead of using the global one
+    without changing anything.
+    """
+
+    def get_mesh() -> Mesh:
+        num_gpus = jax.device_count()
+        devices = mesh_utils.create_device_mesh((num_gpus,))
+        return Mesh(devices, axis_names=('gpus',))
+
+    own_mesh_obj = get_mesh()
+    assert own_mesh_obj == mesh
 
 
 def test_non_array(capsys):
