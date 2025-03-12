@@ -1,7 +1,12 @@
 import ctypes
 import ctypes.util
 import os
+import subprocess
 import time
+from datetime import datetime
+from pathlib import Path
+
+from jaxlib import xla_client
 
 
 def set_process_title(title: str):
@@ -27,6 +32,20 @@ def set_process_title(title: str):
         PR_SET_NAME = 15
 
     result = libc.prctl(PR_SET_NAME, title.encode())
+
+
+def todotgraph(hlo_text: str):
+    return (
+            f"// {datetime.now()}\n" +
+            xla_client._xla.hlo_module_to_dot_graph(xla_client._xla.hlo_module_from_text(hlo_text))
+    )
+
+
+def save_dot_graph(hlo_text: str, file: Path):
+    with file.open("w") as f:
+        f.write(todotgraph(hlo_text))
+    # with file.with_suffix(".dot").open("w") as f:
+    subprocess.run(["dot", "-T", "svg", "-O", str(file)])
 
 
 if __name__ == '__main__':

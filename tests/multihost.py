@@ -3,18 +3,18 @@ See test_multihost.py for the actual tests that call the functions here.
 """
 import os
 import sys
+from pathlib import Path
 from typing import Callable
 
 import jax.distributed
 import numpy as onp
 from jax.experimental import mesh_utils
-from jax.experimental.multihost_utils import process_allgather, broadcast_one_to_all, host_local_array_to_global_array, \
-    global_array_to_host_local_array
+from jax.experimental.multihost_utils import process_allgather, broadcast_one_to_all, host_local_array_to_global_array
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 
 from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info
-from test_utils import set_process_title
+from test_utils import set_process_title, save_dot_graph
 
 os.environ.pop('XLA_FLAGS', None)  # remove any flags that are inherited from the pytest parent
 
@@ -192,6 +192,14 @@ def run_shard_map():
     assert out.shape[1] == arr.shape[1] // num_processes
     sharding_info(out, "out")
 
+    # also test with jit
+    func_jitted = jax.jit(func)
+    if jax.process_index() == 0:
+        save_dot_graph(func_jitted.lower(arr).compile().as_text(), Path("shard_map.dot"))
+    out_jitted = func_jitted(arr)
+
+    assert out_jitted.shape[1] == arr.shape[1] // num_processes
+
 
 def run_broadcast_one_to_all():
     arr = jax.numpy.zeros(128)  # unsharded
@@ -229,7 +237,6 @@ def run_custom_rfftn_multigpu():
     assert "all-gather" in hlo_original
     output_array = rfftn(input_array)
     sharding_info(output_array, "output_array")
-
 
 
 if __name__ == '__main__':

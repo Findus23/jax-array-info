@@ -185,6 +185,12 @@ def test_shard_map():
 │ size: 16.0 KiB     │
 │ called in jit      │
 ╰────────────────────╯
+╭─ x (in shard_map) ─╮
+│ shape: (128, 32)   │
+│ dtype: float32     │
+│ size: 16.0 KiB     │
+│ called in jit      │
+╰────────────────────╯
 ╭───────── out ─────────╮
 │ shape: (128, 32)      │
 │ dtype: float32        │
