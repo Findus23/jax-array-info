@@ -777,6 +777,52 @@ def test_array_stats(capsys):
 """.lstrip("\n")
 
 
+def test_array_stats_with_labels(capsys):
+    for buf in jax.live_arrays(): buf.delete()
+    some_array = jax.device_put(jax.numpy.zeros(shape=(16, 16, 16)), simple_sharding)
+
+    sharding_info(some_array, "some_array")
+    print_array_stats()
+    assert capsys.readouterr().out == """
+╭──────────────── some_array ─────────────────╮
+│ shape: (16, 16, 16)                         │
+│ dtype: float32                              │
+│ size: 16.0 KiB                              │
+│ NamedSharding: P(None, 'gpus')              │
+│ axis 1 is sharded: CPU 0 contains 0:2 (1/8) │
+│                    Total size: 16           │
+╰─────────────────────────────────────────────╯
+                         allocated jax arrays                         
+┏━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ size    ┃ shape        ┃ dtype   ┃      sharded       ┃ label      ┃
+┡━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━┩
+│ 2.0 KiB │ (16, 16, 16) │ float32 │ ✔ (16.0 KiB total) │ some_array │
+├─────────┼──────────────┼─────────┼────────────────────┼────────────┤
+│ 2.0 KiB │              │         │                    │            │
+└─────────┴──────────────┴─────────┴────────────────────┴────────────┘
+""".lstrip("\n")
+
+
+def test_array_stats_with_small_arrays_hidden(capsys):
+    for buf in jax.live_arrays(): buf.delete()
+    some_array = jax.device_put(jax.numpy.zeros(shape=(128, 16, 16)), simple_sharding)
+    small_array = jax.numpy.zeros(shape=(100))
+    small_array2 = jax.numpy.zeros(shape=(500))
+
+    print_array_stats(hide_small_arrays=True)
+    assert capsys.readouterr().out == """
+                    allocated jax arrays                    
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓
+┃ size     ┃ shape         ┃ dtype   ┃       sharded       ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩
+│ 16.0 KiB │ (128, 16, 16) │ float32 │ ✔ (128.0 KiB total) │
+│ 2.3 KiB  │ small arrays  │         │                     │
+├──────────┼───────────────┼─────────┼─────────────────────┤
+│ 18.3 KiB │               │         │                     │
+└──────────┴───────────────┴─────────┴─────────────────────┘
+""".lstrip("\n")
+
+
 def test_mesh_variable():
     """
     Different Mesh objects are equivalent as long as they have the same properties.
@@ -799,3 +845,36 @@ def test_non_array(capsys):
         sharding_info(arr)
     with pytest.raises(ValueError, match="is not a jax array, got <class 'list'>"):
         sharding_vis(arr)
+
+    # allow printing some primitive types
+    sharding_info("test","some string")
+    sharding_info(123,"some integer")
+    sharding_info(float(np.pi),"some float")
+    sharding_info(True,"some boolean")
+    sharding_info(np.array([1])[0],"some numpy scalar")
+    sharding_info(None,"None")
+    assert capsys.readouterr().out == """
+╭─ some string ─╮
+│ type: str     │
+│ value: test   │
+╰───────────────╯
+╭─ some integer ─╮
+│ type: int      │
+│ value: 123     │
+╰────────────────╯
+╭─────── some float ───────╮
+│ type: float              │
+│ value: 3.141592653589793 │
+╰──────────────────────────╯
+╭─ some boolean ─╮
+│ type: bool     │
+│ value: True    │
+╰────────────────╯
+╭─ some numpy scalar ─╮
+│ type: int64         │
+│ value: 1            │
+╰─────────────────────╯
+╭─ None ─╮
+│ None   │
+╰────────╯
+""".lstrip("\n")

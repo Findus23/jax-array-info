@@ -101,3 +101,45 @@ sharding_vis(array)
 ## Examples
 
 You can find many examples of how arrays can be sharded in jax and how the output would look like in [`tests/test_jax.py`](./tests/test_jax.py). For examples of sharding arrays along multiple jax processes check [`test_multihost.py`](./tests/test_multihost.py) and [`multihost.py`](./tests/multihost.py)
+
+## Assigning Labels to Jax Arrays
+
+While the output of `print_array_stats()` is very useful to see which arrays are currently allocated, it is missing the connection to where the array is currently used. While in many cases the shape allows to guess which array a row is refering to, it would be nice to also know its name. 
+Unfortunately we only get a reference to all currently allocated arrays from `jax.live_arrays()` which means we don't know where the array is assigned and what the variable is called.
+We can do an ugly workaround to still get more useful names in the `print_array_stats()` output:
+Whenever `simple_array_info` is used like `simple_array_info(some_array,"some_array")`, we will modify the `some_array` jax array by setting `some_array._custom_label = "some_array"`. Therefore this label becomes a part of the jax `Array` object and we can use this label in our array overview. 
+
+This of course has some limitations (it only works if `simple_array_info` is used outside of jitted code) and is an ugly hack, so it possibly will break some things. Therefore this feature can be disabled globally using
+
+```python
+from jax_array_info import sharding_info, print_array_stats, config as array_info_config
+
+array_info_config.assign_labels_to_arrays = False
+```
+
+#### Example
+```python
+import jax
+from jax_array_info import sharding_info, print_array_stats
+
+some_array = jax.numpy.zeros(shape=(128, 128, 128))
+sharding_info(some_array, "some_array")
+
+print_array_stats()
+```
+```text
+╭────── some_array ──────╮
+│ shape: (128, 128, 128) │
+│ dtype: float32         │
+│ size: 8.0 MiB          │
+│ not sharded            │
+╰────────────────────────╯
+                     allocated jax arrays                     
+┏━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━┓
+┃ size    ┃ shape           ┃ dtype   ┃ sharded ┃ label      ┃
+┡━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━┩
+│ 8.0 MiB │ (128, 128, 128) │ float32 │         │ some_array │
+├─────────┼─────────────────┼─────────┼─────────┼────────────┤
+│ 8.0 MiB │                 │         │         │            │
+└─────────┴─────────────────┴─────────┴─────────┴────────────┘
+```

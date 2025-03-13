@@ -11,15 +11,32 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from .utils import pretty_byte_size
+from .utils import pretty_byte_size, config
 
 SupportedArray = np.ndarray | Array
 
 
+def print_trivial(title: str, content: str):
+    console = rich.console.Console()
+    console.print(Panel(
+        content,
+        expand=False,
+        title=f"[bold]{title}" if title is not None else None,
+    ))
+
+
 def sharding_info(arr: SupportedArray, name: str = None):
+    if config.assign_labels_to_arrays and isinstance(arr, Array) and not isinstance(arr, Tracer):
+        arr._custom_label = name
     if isinstance(arr, np.ndarray):
         return print_sharding_info(arr, None, name)
     if not isinstance(arr, (Array, jax.ShapeDtypeStruct)):
+        if arr is None:
+            print_trivial(name, "None")
+            return
+        if np.ndim(arr) == 0:
+            print_trivial(name, f"type: {type(arr).__name__}\nvalue: {arr}")
+            return
         raise ValueError(f"is not a jax array, got {type(arr)}")
 
     def _info(sharding):
@@ -81,7 +98,9 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
         console.print(f"memory_kind: {sharding.memory_kind}")
 
     if isinstance(sharding, SingleDeviceSharding):
-        console.print("[red]not sharded")
+        if len(jax.devices()) > 1:
+            # only warn about missing sharding if multiple devices are used
+            console.print("[red]not sharded")
     if isinstance(sharding, GSPMDSharding):
         console.print(sharding)
     if isinstance(sharding, PositionalSharding):

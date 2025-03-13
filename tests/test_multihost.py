@@ -79,7 +79,7 @@ def test_multihost():
 
 def test_multihost_device_put():
     expected = """
-╭─────────────────────────────────────────────╮
+╭─────────────── simple_array ────────────────╮
 │ shape: (32, 32, 32)                         │
 │ dtype: complex64                            │
 │ size: 256.0 KiB                             │
@@ -100,14 +100,14 @@ def test_multihost_device_put():
 │       │          │          │          │
 │       │          │          │          │
 └───────┴──────────┴──────────┴──────────┘
-                    allocated jax arrays                     
-┏━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓
-┃ size     ┃ shape        ┃ dtype     ┃       sharded       ┃
-┡━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩
-│ 64.0 KiB │ (32, 32, 32) │ complex64 │ ✔ (256.0 KiB total) │
-├──────────┼──────────────┼───────────┼─────────────────────┤
-│ 64.0 KiB │              │           │                     │
-└──────────┴──────────────┴───────────┴─────────────────────┘
+                            allocated jax arrays                            
+┏━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ size     ┃ shape        ┃ dtype     ┃       sharded       ┃ label        ┃
+┡━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ 64.0 KiB │ (32, 32, 32) │ complex64 │ ✔ (256.0 KiB total) │ simple_array │
+├──────────┼──────────────┼───────────┼─────────────────────┼──────────────┤
+│ 64.0 KiB │              │           │                     │              │
+└──────────┴──────────────┴───────────┴─────────────────────┴──────────────┘
 """.lstrip()
     check_multihost("run_multihost_device_put", expected, num_processes=4)
     # I'll assume for now that the CPU ids are deterministic as they are exactly 2^17 apart
@@ -185,12 +185,6 @@ def test_shard_map():
 │ size: 16.0 KiB     │
 │ called in jit      │
 ╰────────────────────╯
-╭─ x (in shard_map) ─╮
-│ shape: (128, 32)   │
-│ dtype: float32     │
-│ size: 16.0 KiB     │
-│ called in jit      │
-╰────────────────────╯
 ╭───────── out ─────────╮
 │ shape: (128, 32)      │
 │ dtype: float32        │
@@ -198,6 +192,12 @@ def test_shard_map():
 │ !is_fully_addressable │
 │ NamedSharding: P()    │
 ╰───────────────────────╯
+╭─ x (in shard_map) ─╮
+│ shape: (128, 32)   │
+│ dtype: float32     │
+│ size: 16.0 KiB     │
+│ called in jit      │
+╰────────────────────╯
 """.lstrip()
     check_multihost("run_shard_map", expected_output)
 

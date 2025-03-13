@@ -61,10 +61,10 @@ def run_multihost_device_put():
     """
     basic array sharded along multiple hosts
     """
-    arr = jax.numpy.zeros(shape=(32, 32, 32), dtype=jax.numpy.complex64)
-    arr = jax.device_put(arr, simple_sharding)
-    sharding_info(arr)
-    sharding_vis(arr)
+    simple_array = jax.numpy.zeros(shape=(32, 32, 32), dtype=jax.numpy.complex64)
+    simple_array = jax.device_put(simple_array, simple_sharding)
+    sharding_info(simple_array, "simple_array")
+    sharding_vis(simple_array)
     print_array_stats()
 
 
