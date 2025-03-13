@@ -45,7 +45,7 @@ report correct sharding information (e.g. inside jitted functions).
 
 Shows a nice overview over the all currently allocated arrays ordered by their size. To save space, scalar values are grouped by dtype.
 
-**Disclaimer**: This uses `jax.live_arrays()` to get its information. There might be allocated arrays that are missing in this view. Also 
+**Disclaimer**: This uses `jax.live_arrays()` to get its information. There might be allocated arrays that are missing in this view. 
 
 ```python
 arr = jax.numpy.zeros(shape=(16, 16, 16))

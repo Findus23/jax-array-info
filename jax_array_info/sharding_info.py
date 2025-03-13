@@ -34,6 +34,9 @@ def sharding_info(arr: SupportedArray, name: str = None):
         if arr is None:
             print_trivial(name, "None")
             return
+        if isinstance(arr, list):
+            print_trivial(name, f"type: list\nlen: {len(arr)}")
+            return
         if np.ndim(arr) == 0:
             print_trivial(name, f"type: {type(arr).__name__}\nvalue: {arr}")
             return
