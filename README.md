@@ -7,7 +7,7 @@ pip install git+https://github.com/Findus23/jax-array-info.git
 ```
 
 ```python
-from jax_array_info import sharding_info, sharding_vis, simple_array_info, print_array_stats
+from jax_array_info import sharding_info, sharding_vis, simple_array_info, print_array_stats, pretty_memory_stats
 ```
 
 ## `sharding_info(arr)`
@@ -40,12 +40,14 @@ But this means it is broken when used in some type of functions (e.g. when [usin
 advantage of working everywhere (it is equivalent to a `print`) and the tradeoff that it is not guaranteed to always
 report correct sharding information (e.g. inside jitted functions).
 
-
 ## `print_array_stats()`
 
-Shows a nice overview over the all currently allocated arrays ordered by their size. To save space, scalar values are grouped by dtype.
+Shows a nice overview over the all currently allocated arrays ordered by their size. To save space, scalar values are
+grouped by dtype.
 
-**Disclaimer**: This uses `jax.live_arrays()` to get its information. There might be allocated arrays that are missing in this view. 
+**Disclaimer**: This uses `jax.live_arrays()` to get its information. There might be allocated arrays that are missing
+in this view. Also keep in mind that this only reports arrays that are acutally allocated, so calling it inside a jitted
+function won't give useful information.
 
 ```python
 arr = jax.numpy.zeros(shape=(16, 16, 16))
@@ -98,18 +100,53 @@ sharding_vis(array)
 └───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
 ```
 
+## `pretty_memory_stats(device)`
+
+This is printing the output of `device.memory_stats()` as a table. The data (and if any data is available) depends on
+the device
+
+```python
+pretty_memory_stats(jax.local_devices()[0])
+```
+
+```text
+               Memory Stats of cuda:0                
+                     222 allocs                      
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ name                     ┃     size ┃  size (raw) ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ bytes_in_use             │  3.6 GiB │  3897557504 │
+│ peak_bytes_in_use        │ 29.9 GiB │ 32087482368 │
+│ largest_alloc_size       │ 23.5 GiB │ 25232940032 │
+│ bytes_limit              │ 33.3 GiB │ 35714334720 │
+│ bytes_reserved           │    0.0 B │           0 │
+│ peak_bytes_reserved      │    0.0 B │           0 │
+│ largest_free_block_bytes │    0.0 B │           0 │
+│ pool_bytes               │ 33.3 GiB │ 35714334720 │
+│ peak_pool_bytes          │ 33.3 GiB │ 35714334720 │
+└──────────────────────────┴──────────┴─────────────┘
+```
+
 ## Examples
 
-You can find many examples of how arrays can be sharded in jax and how the output would look like in [`tests/test_jax.py`](./tests/test_jax.py). For examples of sharding arrays along multiple jax processes check [`test_multihost.py`](./tests/test_multihost.py) and [`multihost.py`](./tests/multihost.py)
+You can find many examples of how arrays can be sharded in jax and how the output would look like in [
+`tests/test_jax.py`](./tests/test_jax.py). For examples of sharding arrays along multiple jax processes check [
+`test_multihost.py`](./tests/test_multihost.py) and [`multihost.py`](./tests/multihost.py)
 
 ## Assigning Labels to Jax Arrays
 
-While the output of `print_array_stats()` is very useful to see which arrays are currently allocated, it is missing the connection to where the array is currently used. While in many cases the shape allows to guess which array a row is refering to, it would be nice to also know its name. 
-Unfortunately we only get a reference to all currently allocated arrays from `jax.live_arrays()` which means we don't know where the array is assigned and what the variable is called.
+While the output of `print_array_stats()` is very useful to see which arrays are currently allocated, it is missing the
+connection to where the array is currently used. While in many cases the shape allows to guess which array a row is
+refering to, it would be nice to also know its name.
+Unfortunately we only get a reference to all currently allocated arrays from `jax.live_arrays()` which means we don't
+know where the array is assigned and what the variable is called.
 We can do an ugly workaround to still get more useful names in the `print_array_stats()` output:
-Whenever `simple_array_info` is used like `simple_array_info(some_array,"some_array")`, we will modify the `some_array` jax array by setting `some_array._custom_label = "some_array"`. Therefore this label becomes a part of the jax `Array` object and we can use this label in our array overview. 
+Whenever `simple_array_info` is used like `simple_array_info(some_array,"some_array")`, we will modify the `some_array`
+jax array by setting `some_array._custom_label = "some_array"`. Therefore this label becomes a part of the jax `Array`
+object and we can use this label in our array overview.
 
-This of course has some limitations (it only works if `simple_array_info` is used outside of jitted code) and is an ugly hack, so it possibly will break some things. Therefore this feature can be disabled globally using
+This of course has some limitations (it only works if `simple_array_info` is used outside of jitted code) and is an ugly
+hack, so it possibly will break some things. Therefore this feature can be disabled globally using
 
 ```python
 from jax_array_info import sharding_info, print_array_stats, config as array_info_config
@@ -118,6 +155,7 @@ array_info_config.assign_labels_to_arrays = False
 ```
 
 #### Example
+
 ```python
 import jax
 from jax_array_info import sharding_info, print_array_stats
@@ -127,6 +165,7 @@ sharding_info(some_array, "some_array")
 
 print_array_stats()
 ```
+
 ```text
 ╭────── some_array ──────╮
 │ shape: (128, 128, 128) │

@@ -9,8 +9,8 @@ from jax._src.sharding_impls import PositionalSharding
 from jax.experimental import mesh_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
-from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info
 
+from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info, pretty_memory_stats
 from test_utils import is_on_cluster
 
 num_gpus = 8
@@ -892,4 +892,31 @@ def test_non_array(capsys):
 │ type: list │
 │ len: 3     │
 ╰────────────╯
+""".lstrip("\n")
+
+
+def test_memory_stats(capsys):
+    pretty_memory_stats(jax.devices()[0], override={
+        'num_allocs': 222,
+        'bytes_in_use': 3897557504, 'peak_bytes_in_use': 32087482368,
+        'largest_alloc_size': 25232940032, 'bytes_limit': 35714334720,
+        'bytes_reserved': 0, 'peak_bytes_reserved': 0,
+        'largest_free_block_bytes': 0, 'pool_bytes': 35714334720, 'peak_pool_bytes': 35714334720
+    })
+    assert capsys.readouterr().out == """
+             Memory Stats of TFRT_CPU_0              
+                     222 allocs                      
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━┓
+┃ name                     ┃     size ┃  size (raw) ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━┩
+│ bytes_in_use             │  3.6 GiB │  3897557504 │
+│ peak_bytes_in_use        │ 29.9 GiB │ 32087482368 │
+│ largest_alloc_size       │ 23.5 GiB │ 25232940032 │
+│ bytes_limit              │ 33.3 GiB │ 35714334720 │
+│ bytes_reserved           │    0.0 B │           0 │
+│ peak_bytes_reserved      │    0.0 B │           0 │
+│ largest_free_block_bytes │    0.0 B │           0 │
+│ pool_bytes               │ 33.3 GiB │ 35714334720 │
+│ peak_pool_bytes          │ 33.3 GiB │ 35714334720 │
+└──────────────────────────┴──────────┴─────────────┘
 """.lstrip("\n")
