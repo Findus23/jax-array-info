@@ -26,7 +26,7 @@ def pretty_memory_stats(device: Device, override=None):
     table.add_column("size", justify="right")
     table.add_column("size (raw)", justify="right")
 
-    for k, v in override.items():
+    for k, v in stats.items():
         table.add_row(
             k,
             pretty_byte_size(v),
