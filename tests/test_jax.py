@@ -12,9 +12,14 @@ from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 
 from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info
 
+from test_utils import is_on_cluster
+
 num_gpus = 8
 
-os.environ['XLA_FLAGS'] = f'--xla_force_host_platform_device_count={num_gpus}'
+if is_on_cluster():
+    jax.distributed.initialize()
+else:
+    os.environ['XLA_FLAGS'] = f'--xla_force_host_platform_device_count={num_gpus}'
 
 devices = mesh_utils.create_device_mesh((num_gpus,))
 mesh = Mesh(devices, axis_names=('gpus',))
@@ -28,12 +33,19 @@ devices_3d = mesh_utils.create_device_mesh((num_gpus // 4, 2, 2))
 mesh_3d = Mesh(devices_3d, axis_names=('a', 'b', 'c'))
 
 
+def generalize(input: str) -> str:
+    """
+    modify test output so that tests still succeed when running on multi-host GPU cluster
+    """
+    input = input.replace('GPU', "CPU")
+    return "".join(l for l in input.splitlines(keepends=True) if "is_fully_addressable" not in l)
+
 def test_simple(capsys):
     arr = jax.numpy.array([1, 2, 3])
     sharding_info(arr, "arr")
     sharding_vis(arr)
 
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭──── arr ─────╮
 │ shape: (3,)  │
 │ dtype: int32 │
@@ -50,7 +62,7 @@ def test_not_sharded(capsys):
     arr = jax.numpy.zeros(shape=(10, 10, 10), dtype=jax.numpy.complex64)
     sharding_info(arr)
     sharding_vis(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────╮
 │ shape: (10, 10, 10) │
 │ dtype: complex64    │
@@ -77,7 +89,7 @@ def test_device_put(capsys):
     arr = jax.device_put(arr, simple_sharding)
     sharding_info(arr)
     sharding_vis(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (32, 32, 32)                         │
 │ dtype: complex64                            │
@@ -107,7 +119,7 @@ def test_operator_sharded(capsys):
     arr = arr * 2
     sharding_info(arr)
     sharding_vis(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (32, 32, 32)                         │
 │ dtype: complex64                            │
@@ -141,7 +153,7 @@ def test_jit_out_sharding_sharded(capsys):
     arr = func(arr)
     sharding_info(arr)
     sharding_vis(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (32, 32, 32)                         │
 │ dtype: complex64                            │
@@ -170,7 +182,7 @@ def test_positional_sharded(capsys):
     arr = jax.device_put(arr, PositionalSharding(devices))
     sharding_info(arr)
     sharding_vis(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭───────────────────────────────────────────────────────────────────╮
 │ shape: (32,)                                                      │
 │ dtype: complex64                                                  │
@@ -197,7 +209,7 @@ def test_in_jit(capsys):
 
     func = jax.jit(func)
     func(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (32, 32, 32)                         │
 │ dtype: complex64                            │
@@ -228,7 +240,7 @@ def test_pmap(capsys):
     sharding_info(arr)
     sharding_vis(arr)
 
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭──────────────────────────────────────────────────────────────────────╮
 │ shape: (8, 24)                                                       │
 │ dtype: complex64                                                     │
@@ -295,7 +307,7 @@ def test_custom_rfftn_sharded(capsys):
 
     output_array = rfftn(input_array)
     sharding_info(output_array, "output_array")
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭──────────────── input_array ─────────────────╮
 │ shape: (128, 128, 128)                       │
 │ dtype: float32                               │
@@ -323,7 +335,7 @@ def test_custom_rfftn_sharded(capsys):
         )
         output_array_shardy = rfftn_shardy(input_array)
         sharding_info(output_array_shardy, "output_array_shardy")
-        assert capsys.readouterr().out == """
+        assert generalize(capsys.readouterr().out) == """
 ╭──────────── output_array_shardy ─────────────╮
 │ shape: (128, 128, 65)                        │
 │ dtype: complex64                             │
@@ -361,7 +373,7 @@ def test_eval_shape(capsys):
     output_eval: jax.ShapeDtypeStruct = simple_function.eval_shape(input_array)
 
     sharding_info(output_eval)
-    assert capsys.readouterr().out == expected_output
+    assert generalize(capsys.readouterr().out) == expected_output
 
     # this even works without ever allocating the input arrays
 
@@ -370,7 +382,7 @@ def test_eval_shape(capsys):
     output_eval_placeholder: jax.ShapeDtypeStruct = simple_function.eval_shape(input_placeholder)
 
     sharding_info(output_eval_placeholder)
-    assert capsys.readouterr().out == expected_output
+    assert generalize(capsys.readouterr().out) == expected_output
 
 
 def test_scalar(capsys):
@@ -383,7 +395,7 @@ def test_scalar(capsys):
     some_array = jax.numpy.array([1, 2, 3])
     sharding_info(some_array[0], "some_array[0]")
 
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─ some_scalar_value ─╮
 │ shape: ()           │
 │ dtype: int32        │
@@ -407,7 +419,7 @@ def test_numpy(capsys):
     sharding_info(arr)
     with pytest.raises(ValueError, match="is not a jax array, got <class 'numpy.ndarray'>"):
         sharding_vis(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────╮
 │ shape: (10, 10, 10) │
 │ dtype: float64      │
@@ -422,7 +434,7 @@ def test_2d_sharded(capsys):
     arr = jax.device_put(arr, NamedSharding(mesh_2d, P(None, "a", "b")))
     sharding_info(arr)
     sharding_vis(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭──────────────────────────────────────────────╮
 │ shape: (32, 32, 32)                          │
 │ dtype: complex64                             │
@@ -453,7 +465,7 @@ def test_3d_sharded(capsys):
     with pytest.raises(NotImplementedError,
                        match=r"can only visualize up to 2 sharded dimension. \[0, 1, 2\] are sharded."):
         sharding_vis(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭──────────────────────────────────────────────╮
 │ shape: (32, 32, 32)                          │
 │ dtype: complex64                             │
@@ -483,7 +495,7 @@ def test_shard_map(capsys):
     out = test(arr)
 
     sharding_info(out)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (16, 16)                             │
 │ dtype: float32                              │
@@ -499,7 +511,7 @@ def test_simple_array_info(capsys):
     arr = jax.numpy.zeros(shape=(8 * 4, 8 * 4, 8 * 4), dtype=jax.numpy.complex64)
     arr = jax.device_put(arr, simple_sharding)
     simple_array_info(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (32, 32, 32)                         │
 │ dtype: complex64                            │
@@ -532,7 +544,7 @@ def test_inside_shard_map_simple(capsys):
 
     func_shard_map = shard_map(test, mesh=mesh, in_specs=P(None, 'gpus'), out_specs=P(None, 'gpus'))
     out = func_shard_map(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭──── input ─────╮
 │ shape: (16, 2) │
 │ dtype: float32 │
@@ -555,7 +567,7 @@ def test_indirectly_sharded(capsys):
 
     func = jax.jit(func, out_shardings=simple_sharding)
     arr = func(arr)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (16, 16, 16)                         │
 │ dtype: float32                              │
@@ -572,7 +584,7 @@ def test_indirectly_sharded(capsys):
         func = jax.jit(func, out_shardings=simple_sharding)
         arr = func(arr)
         sharding_info(arr, "output")
-        assert capsys.readouterr().out == """
+        assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────╮
 │ shape: (16, 16, 16) │
 │ dtype: float32      │
@@ -601,7 +613,7 @@ def test_with_sharding_constraint(capsys):
     arr = func(arr)
     sharding_info(arr)
 
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (16, 16, 16)                         │
 │ dtype: float32                              │
@@ -622,7 +634,7 @@ def test_sharding_outer_product(capsys):
 
     sharding_info(product)
 
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (16, 16)                             │
 │ dtype: int32                                │
@@ -651,7 +663,7 @@ def test_sharded_closure(capsys):
 
     out = some_function()
     sharding_info(out)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (16, 16)                             │
 │ dtype: float32                              │
@@ -668,7 +680,7 @@ def test_nondefault_device(capsys):
     some_array_on_one_device = jax.device_put(some_array, devices[2])
     sharding_info(some_array_on_one_device)
 
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭────────────────────╮
 │ shape: (16,)       │
 │ dtype: float32     │
@@ -684,7 +696,7 @@ def test_device_put_replicated(capsys):
     replicated_array = jax.device_put_replicated(some_array, jax.devices())
     sharding_info(replicated_array)
 
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭──────────────────────────────────────────────────────────────────────╮
 │ shape: (8, 16)                                                       │
 │ dtype: float32                                                       │
@@ -715,7 +727,7 @@ def test_device_put_sharded(capsys):
                                  [7, 7, 7]])
     assert jax.numpy.all(replicated_array == reference)
 
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭──────────────────────────────────────────────────────────────────────╮
 │ shape: (8, 3)                                                        │
 │ dtype: int32                                                         │
@@ -738,7 +750,7 @@ def test_make_array_from_single_device_arrays(capsys):
         list_of_arrays.append(some_array)
     replicated_array = jax.make_array_from_single_device_arrays((3, 16), simple_sharding, list_of_arrays)
     sharding_info(replicated_array)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─────────────────────────────────────────────╮
 │ shape: (3, 16)                              │
 │ dtype: int32                                │
@@ -761,7 +773,7 @@ def test_array_stats(capsys):
 
     print_array_stats()
 
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
                   allocated jax arrays                   
 ┏━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┓
 ┃ size     ┃ shape        ┃ dtype   ┃      sharded      ┃
@@ -783,7 +795,7 @@ def test_array_stats_with_labels(capsys):
 
     sharding_info(some_array, "some_array")
     print_array_stats()
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭──────────────── some_array ─────────────────╮
 │ shape: (16, 16, 16)                         │
 │ dtype: float32                              │
@@ -810,7 +822,7 @@ def test_array_stats_with_small_arrays_hidden(capsys):
     small_array2 = jax.numpy.zeros(shape=(500))
 
     print_array_stats(hide_small_arrays=True)
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
                     allocated jax arrays                    
 ┏━━━━━━━━━━┳━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓
 ┃ size     ┃ shape         ┃ dtype   ┃       sharded       ┃
@@ -853,7 +865,7 @@ def test_non_array(capsys):
     sharding_info(True,"some boolean")
     sharding_info(np.array([1])[0],"some numpy scalar")
     sharding_info(None,"None")
-    assert capsys.readouterr().out == """
+    assert generalize(capsys.readouterr().out) == """
 ╭─ some string ─╮
 │ type: str     │
 │ value: test   │

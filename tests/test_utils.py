@@ -48,6 +48,10 @@ def save_dot_graph(hlo_text: str, file: Path):
     subprocess.run(["dot", "-T", "svg", "-O", str(file)])
 
 
+def is_on_cluster() -> bool:
+    return "SLURM_JOB_ID" in os.environ
+
+
 if __name__ == '__main__':
     set_process_title("teest")
     print(os.getpid())
