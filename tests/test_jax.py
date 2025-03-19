@@ -9,7 +9,6 @@ from jax._src.sharding_impls import PositionalSharding
 from jax.experimental import mesh_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
-
 from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info
 
 from test_utils import is_on_cluster
@@ -39,6 +38,7 @@ def generalize(input: str) -> str:
     """
     input = input.replace('GPU', "CPU")
     return "".join(l for l in input.splitlines(keepends=True) if "is_fully_addressable" not in l)
+
 
 def test_simple(capsys):
     arr = jax.numpy.array([1, 2, 3])
@@ -854,17 +854,16 @@ def test_mesh_variable():
 def test_non_array(capsys):
     arr = [1, 2, 3]
     with pytest.raises(ValueError, match="is not a jax array, got <class 'list'>"):
-        sharding_info(arr)
-    with pytest.raises(ValueError, match="is not a jax array, got <class 'list'>"):
         sharding_vis(arr)
 
     # allow printing some primitive types
-    sharding_info("test","some string")
-    sharding_info(123,"some integer")
-    sharding_info(float(np.pi),"some float")
-    sharding_info(True,"some boolean")
-    sharding_info(np.array([1])[0],"some numpy scalar")
-    sharding_info(None,"None")
+    sharding_info("test", "some string")
+    sharding_info(123, "some integer")
+    sharding_info(float(np.pi), "some float")
+    sharding_info(True, "some boolean")
+    sharding_info(np.array([1])[0], "some numpy scalar")
+    sharding_info(None, "None")
+    sharding_info([1, 2, 3], "list")
     assert generalize(capsys.readouterr().out) == """
 ╭─ some string ─╮
 │ type: str     │
@@ -889,4 +888,8 @@ def test_non_array(capsys):
 ╭─ None ─╮
 │ None   │
 ╰────────╯
+╭─── list ───╮
+│ type: list │
+│ len: 3     │
+╰────────────╯
 """.lstrip("\n")
