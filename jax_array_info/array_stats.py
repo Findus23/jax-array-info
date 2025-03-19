@@ -40,9 +40,6 @@ def print_array_stats(hide_small_arrays: bool = False):
             file_size /= len(arr.sharding.device_set)
             is_sharded = True
         total_size += file_size
-        if hide_small_arrays and file_size < (1024 * 3):
-            skipped_size += file_size
-            continue
         if len(arr.shape) == 0:
             scalar_stats[arr.dtype] += 1
             scalar_size_stats[arr.dtype] += file_size
@@ -55,11 +52,14 @@ def print_array_stats(hide_small_arrays: bool = False):
         if multiple_devices:
             columns.append(f"✔ ({pretty_byte_size(arr.nbytes)} total)" if is_sharded else "")
 
-        if config.assign_labels_to_arrays and any_label_exists:
             label = ""
+        if config.assign_labels_to_arrays and any_label_exists:
             if hasattr(arr, "_custom_label"):
                 label = arr._custom_label
             columns.append(label)
+        if hide_small_arrays and (not label) and file_size < (1024 * 3):
+            skipped_size += file_size
+            continue
         table.add_row(*columns),
     if skipped_size > 0:
         table.add_row(
