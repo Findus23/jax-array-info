@@ -48,6 +48,11 @@ def sharding_info(arr: SupportedArray, name: str = None):
     inspect_array_sharding(arr, callback=_info)
 
 
+def label_array(arr: Array, name: str):
+    if config.assign_labels_to_arrays and isinstance(arr, Array) and not isinstance(arr, Tracer):
+        arr._custom_label = name
+
+
 def simple_array_info(arr: SupportedArray, name: str = None):
     sharding = None
     if isinstance(arr, Array):
