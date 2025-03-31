@@ -1,4 +1,5 @@
 import os
+import re
 from functools import partial
 
 import jax.numpy
@@ -9,6 +10,7 @@ from jax._src.sharding_impls import PositionalSharding
 from jax.experimental import mesh_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from jaxlib.xla_client import XlaRuntimeError
 
 from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info, pretty_memory_stats
 from test_utils import is_on_cluster
@@ -19,6 +21,8 @@ if is_on_cluster():
     jax.distributed.initialize()
 else:
     os.environ['XLA_FLAGS'] = f'--xla_force_host_platform_device_count={num_gpus}'
+
+is_double_precision = jax.config.read("jax_enable_x64")
 
 devices = mesh_utils.create_device_mesh((num_gpus,))
 mesh = Mesh(devices, axis_names=('gpus',))
@@ -760,6 +764,89 @@ def test_make_array_from_single_device_arrays(capsys):
 │                    Total size: 16           │
 ╰─────────────────────────────────────────────╯
 """.lstrip()
+
+
+def test_containing_map():
+    """
+    testcase adapted from https://github.com/jax-ml/jax/issues/19691#issuecomment-2181170116
+    (originally by https://github.com/jeffgortmaker)
+
+    While working perfectly fine in single precision, it triggers
+    https://github.com/jax-ml/jax/issues/19691
+    when run using double precision
+    """
+
+    def g(y):
+        return y
+
+    def f(y):
+        return y - jax.lax.map(g, y)
+
+    x = jax.numpy.ones(16)
+    f(x)
+    jitted_f = jax.jit(f)
+    jitted_f(x)
+
+    sharded_x = jax.device_put(x, simple_sharding1d)
+
+    f(sharded_x)
+
+    jitted_f(sharded_x)  # this will fail with double precision
+
+
+def test_containing_map_abstract():
+    """
+    based on test_containing_map, but
+    - only compiling based on a ShapeDtypeStruct instead of executing with actual data
+    - testing with both enable_x64 enabled and disabled
+    - testing multiple cases where
+    """
+
+    def f_using_map(y):
+        return y - jax.lax.map(lambda a: a, y)
+
+    def f_using_scan(y):
+        return y - jax.lax.scan(lambda c, x: (c, x), 0, y)[1]
+
+    def f_using_dynamic_update_slice(y):
+        update = jax.numpy.ones(3, dtype=y.dtype)
+        return jax.lax.dynamic_update_slice(y, update, (2,))
+
+    for use_double_precision in [True, False]:
+        # while normally one should always set enable_x64 globally,
+        # for this test it also works if we switch it up here
+        # as we compile everything inside the context manager without global state
+        with jax.experimental.enable_x64(use_double_precision):
+            for f in [f_using_map, f_using_scan, f_using_dynamic_update_slice]:
+                jitted_f = jax.jit(f)
+                # this seems to be independent of the dtype of the input array, so try a few of them
+                for dtype in [
+                    jax.numpy.float32, jax.numpy.float64,
+                    jax.numpy.int32, jax.numpy.int64,
+                    jax.numpy.complex64, jax.numpy.complex128,
+                    jax.numpy.bfloat16]:
+                    abstract_input = jax.ShapeDtypeStruct((128,), dtype, sharding=simple_sharding1d)
+                    if not use_double_precision:
+                        # in single precision this works without any issue
+                        compiled = jitted_f.lower(abstract_input).compile()
+                        # and give proper HLO
+                        assert len(compiled.as_text()) > 1000
+                    else:
+                        # call JAX_ENABLE_X64=True pytest -vv tests/test_jax.py::test_containing_map_abstract
+                        # for this branch
+                        # This triggers the bug described in
+                        # https://github.com/jax-ml/jax/issues/19691
+                        with pytest.raises(XlaRuntimeError, match=re.escape(
+                                "INVALID_ARGUMENT: during context [hlo verifier]: "
+                                "Binary op compare with different element types: "
+                                "s64[] and s32[]"  # always the exact same instruction
+                        ) + ".+") as e:
+
+                            jitted_f.lower(abstract_input).compile()
+                        exception_message = e.value.args[0]
+                        assert "= pred[] compare(" in exception_message
+                        assert f"op_name=\"jit({f.__name__})" in exception_message
+                        # print(e.value.args[0])  # full exception
 
 
 def test_array_stats(capsys):
