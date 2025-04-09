@@ -53,11 +53,19 @@ def is_on_cluster() -> bool:
 
 
 def add_xla_flag(flag: str) -> None:
-    if "XLA_FLAGS" not in os.environ:
-        os.environ["XLA_FLAGS"] = flag
-        return
+    xla_flags = {}
+    if "XLA_FLAGS" in os.environ:
+        existing_flags = os.environ["XLA_FLAGS"].split()
+        for existing_flag in existing_flags:
+            k, v = existing_flag.split("=")
+            xla_flags[k] = v
 
-    os.environ["XLA_FLAGS"] = os.environ["XLA_FLAGS"] + " " + flag
+    key, value = flag.split("=")
+    if key in xla_flags and xla_flags[key] != value:
+        print(f"overwriting existing XLA_FLAGS entry {key}: {xla_flags[key]} -> {value}")
+    xla_flags[key] = value
+
+    os.environ["XLA_FLAGS"] = " ".join(f"{k}={v}" for k, v in xla_flags.items())
 
 
 if __name__ == '__main__':
