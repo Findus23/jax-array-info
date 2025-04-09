@@ -21,6 +21,7 @@ if is_on_cluster():
     jax.distributed.initialize()
 else:
     add_xla_flag(f'--xla_force_host_platform_device_count={num_gpus}')
+    print(os.environ['XLA_FLAGS'])
 
 is_double_precision = jax.config.read("jax_enable_x64")
 
@@ -826,7 +827,7 @@ def test_containing_map_abstract():
                     jax.numpy.complex64, jax.numpy.complex128,
                     jax.numpy.bfloat16]:
                     abstract_input = jax.ShapeDtypeStruct((128,), dtype, sharding=simple_sharding1d)
-                    if not use_double_precision or True:
+                    if not use_double_precision:
                         # in single precision this works without any issue
                         compiled = jitted_f.lower(abstract_input).compile()
                         # and give proper HLO

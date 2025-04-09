@@ -14,7 +14,6 @@ Also more about StableHLO and XLA can be found here:
 
 """
 import dataclasses
-import os
 
 import jax
 import pytest
@@ -24,11 +23,10 @@ from jax.sharding import Mesh, PartitionSpec, NamedSharding
 from jaxlib.mlir.dialects import stablehlo
 from jaxlib.mlir.ir import Module
 from jaxlib.xla_client import XlaRuntimeError
+
 from test_utils import add_xla_flag
 
-
-add_xla_flag('--xla_force_host_platform_device_count=4')
-jax.config.update('jax_enable_x64', True)
+add_xla_flag('--xla_force_host_platform_device_count=8')
 
 mesh = Mesh(jax.devices(), ('a',))
 sharding = NamedSharding(mesh, PartitionSpec('a'))
@@ -40,11 +38,11 @@ input_dtype = jax.numpy.float64
 input_sharding = sharding
 abstract_input = jax.ShapeDtypeStruct(input_shape, input_dtype, sharding=input_sharding)
 
-exported = export(jitted_f)(abstract_input)
-lowered = jitted_f.lower(abstract_input)
-compiled = lowered.compile()
+with jax.experimental.enable_x64():
+    exported = export(jitted_f)(abstract_input)
+    lowered = jitted_f.lower(abstract_input)
+    compiled = lowered.compile()
 
-print(lowered.as_text())
 
 
 def test_mlir_module_drectly():
@@ -64,8 +62,8 @@ def test_stablehlo_dialect():
 def test_lowered():
     assert "return %arg0 : tensor<128xf64>" in lowered.as_text()
     assert lowered.as_text() == """
-module @jit__lambda_ attributes {mhlo.num_partitions = 4 : i32, mhlo.num_replicas = 1 : i32} {
-  func.func public @main(%arg0: tensor<128xf64> {mhlo.sharding = "{devices=[4]<=[4]}"}) -> (tensor<128xf64> {jax.result_info = "result"}) {
+module @jit__lambda_ attributes {mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func public @main(%arg0: tensor<128xf64> {mhlo.sharding = "{devices=[8]<=[8]}"}) -> (tensor<128xf64> {jax.result_info = "result"}) {
     return %arg0 : tensor<128xf64>
   }
 }
@@ -79,8 +77,8 @@ def test_reading_stablehlo():
     stablehlo_str = out.operation.get_asm(enable_debug_info=False)
     # this is essentially identical to lowered.as_text(), with minor debug info differences
     assert stablehlo_str == """
-module @jit__lambda_ attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 4 : i32, mhlo.num_replicas = 1 : i32} {
-  func.func public @main(%arg0: tensor<128xf64> {mhlo.sharding = "{devices=[4]<=[4]}"}) -> (tensor<128xf64> {jax.result_info = "result"}) {
+module @jit__lambda_ attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func public @main(%arg0: tensor<128xf64> {mhlo.sharding = "{devices=[8]<=[8]}"}) -> (tensor<128xf64> {jax.result_info = "result"}) {
     return %arg0 : tensor<128xf64>
   }
 }
@@ -93,8 +91,8 @@ def test_replacing_stablehlo_trivial_case():
     by replacing the stablehlo
     """
     custom_stablehlo = """
-module @jit__lambda_ attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 4 : i32, mhlo.num_replicas = 1 : i32} {
-  func.func public @main(%arg0: tensor<128xf64> {mhlo.sharding = "{devices=[4]<=[4]}"}) -> (tensor<128xf64> {jax.result_info = "result"}) {
+module @jit__lambda_ attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func public @main(%arg0: tensor<128xf64> {mhlo.sharding = "{devices=[8]<=[8]}"}) -> (tensor<128xf64> {jax.result_info = "result"}) {
     %some_int_constant = stablehlo.constant dense<42> : tensor<i64>
     %const_as_float = stablehlo.convert %some_int_constant : (tensor<i64>) -> tensor<f64>
     %filled_array = stablehlo.broadcast_in_dim %const_as_float, dims = [] : (tensor<f64>) -> tensor<128xf64>
@@ -105,18 +103,19 @@ module @jit__lambda_ attributes {jax.uses_shape_polymorphism = false, mhlo.num_p
   }
 }
 """
-    mlir_module_replaced = stablehlo.serialize_portable_artifact_str(custom_stablehlo, stablehlo.get_current_version())
-    # this should replace the no-op function with one that adds 42 to all entries
-    replaced_function = dataclasses.replace(exported, mlir_module_serialized=mlir_module_replaced)
+    with jax.experimental.enable_x64():
+        mlir_module_replaced = stablehlo.serialize_portable_artifact_str(custom_stablehlo, stablehlo.get_current_version())
+        # this should replace the no-op function with one that adds 42 to all entries
+        replaced_function = dataclasses.replace(exported, mlir_module_serialized=mlir_module_replaced)
 
-    # create actual input for the function
-    input = jax.numpy.full(input_shape, 1, dtype=input_dtype)
-    expected_output = jax.numpy.full(input_shape, 1. + 42., dtype=input_dtype)
-    input = jax.device_put(input, input_sharding)
-    expected_output = jax.device_put(expected_output, input_sharding)
+        # create actual input for the function
+        input = jax.numpy.full(input_shape, 1, dtype=input_dtype)
+        expected_output = jax.numpy.full(input_shape, 1. + 42., dtype=input_dtype)
+        input = jax.device_put(input, input_sharding)
+        expected_output = jax.device_put(expected_output, input_sharding)
 
-    output = replaced_function.call(input)
-    assert jax.numpy.all(output == expected_output)
+        output = replaced_function.call(input)
+        assert jax.numpy.all(output == expected_output)
 
 
 def test_replacing_stablehlo_bug():
@@ -125,8 +124,8 @@ def test_replacing_stablehlo_bug():
     https://github.com/jax-ml/jax/issues/19691#issuecomment-2748975994
     """
     custom_stablehlo = """
-module @jit_f attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 4 : i32, mhlo.num_replicas = 1 : i32} {
-  func.func public @main(%input_array: tensor<128xf64> {mhlo.sharding = "{devices=[4]<=[4]}"}) -> (tensor<128xf64> {jax.result_info = ""}) {
+module @jit_f attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func public @main(%input_array: tensor<128xf64> {mhlo.sharding = "{devices=[8]<=[8]}"}) -> (tensor<128xf64> {jax.result_info = ""}) {
     %const_scalar = stablehlo.constant dense<1> : tensor<i64>
     %const_scalar2 = stablehlo.constant dense<2> : tensor<i64>
     %slice = stablehlo.dynamic_slice %input_array, %const_scalar, sizes = [1] : (tensor<128xf64>, tensor<i64>) -> tensor<1xf64>
@@ -134,18 +133,19 @@ module @jit_f attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitio
     return %output : tensor<128xf64>
   }
 }"""
-    mlir_module_replaced = stablehlo.serialize_portable_artifact_str(custom_stablehlo, stablehlo.get_current_version())
-    replaced_function = dataclasses.replace(exported, mlir_module_serialized=mlir_module_replaced)
+    with jax.experimental.enable_x64():
+        mlir_module_replaced = stablehlo.serialize_portable_artifact_str(custom_stablehlo, stablehlo.get_current_version())
+        replaced_function = dataclasses.replace(exported, mlir_module_serialized=mlir_module_replaced)
 
-    input = jax.numpy.zeros(input_shape, dtype=input_dtype)
-    input = jax.device_put(input, input_sharding)
+        input = jax.numpy.zeros(input_shape, dtype=input_dtype)
+        input = jax.device_put(input, input_sharding)
 
-    with pytest.raises(XlaRuntimeError) as e:
-        replaced_function.call(input)
-    assert e.value.args[0] == (
-        'INVALID_ARGUMENT: during context [hlo verifier]: '
-        'Binary op compare with different element types: '
-        's64[] and s32[].\n\t, for instruction '
-        '%compare.1 = pred[] compare(%constant.4, %multiply), '
-        'direction=GE, metadata={source_file="-" source_line=7}\n\n'
-        'Failed after spmd-partitioning')
+        with pytest.raises(XlaRuntimeError) as e:
+            replaced_function.call(input)
+        assert e.value.args[0] == (
+            'INVALID_ARGUMENT: during context [hlo verifier]: '
+            'Binary op compare with different element types: '
+            's64[] and s32[].\n\t, for instruction '
+            '%compare.1 = pred[] compare(%constant.4, %multiply), '
+            'direction=GE, metadata={source_file="-" source_line=7}\n\n'
+            'Failed after spmd-partitioning')
