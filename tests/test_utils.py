@@ -52,6 +52,14 @@ def is_on_cluster() -> bool:
     return "SLURM_JOB_ID" in os.environ
 
 
+def add_xla_flag(flag: str) -> None:
+    if "XLA_FLAGS" not in os.environ:
+        os.environ["XLA_FLAGS"] = flag
+        return
+
+    os.environ["XLA_FLAGS"] = os.environ["XLA_FLAGS"] + " " + flag
+
+
 if __name__ == '__main__':
     set_process_title("teest")
     print(os.getpid())

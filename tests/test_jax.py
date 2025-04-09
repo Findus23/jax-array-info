@@ -13,14 +13,14 @@ from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 from jaxlib.xla_client import XlaRuntimeError
 
 from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info, pretty_memory_stats
-from test_utils import is_on_cluster
+from test_utils import is_on_cluster, add_xla_flag
 
 num_gpus = 8
 
 if is_on_cluster():
     jax.distributed.initialize()
 else:
-    os.environ['XLA_FLAGS'] = f'--xla_force_host_platform_device_count={num_gpus}'
+    add_xla_flag(f'--xla_force_host_platform_device_count={num_gpus}')
 
 is_double_precision = jax.config.read("jax_enable_x64")
 
@@ -826,7 +826,7 @@ def test_containing_map_abstract():
                     jax.numpy.complex64, jax.numpy.complex128,
                     jax.numpy.bfloat16]:
                     abstract_input = jax.ShapeDtypeStruct((128,), dtype, sharding=simple_sharding1d)
-                    if not use_double_precision:
+                    if not use_double_precision or True:
                         # in single precision this works without any issue
                         compiled = jitted_f.lower(abstract_input).compile()
                         # and give proper HLO

@@ -24,8 +24,10 @@ from jax.sharding import Mesh, PartitionSpec, NamedSharding
 from jaxlib.mlir.dialects import stablehlo
 from jaxlib.mlir.ir import Module
 from jaxlib.xla_client import XlaRuntimeError
+from test_utils import add_xla_flag
 
-os.environ['XLA_FLAGS'] = '--xla_force_host_platform_device_count=4'
+
+add_xla_flag('--xla_force_host_platform_device_count=4')
 jax.config.update('jax_enable_x64', True)
 
 mesh = Mesh(jax.devices(), ('a',))
