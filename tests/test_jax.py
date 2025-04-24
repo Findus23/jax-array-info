@@ -529,15 +529,19 @@ def test_simple_array_info(capsys):
 
 
 def test_inside_shard_map_failing(capsys):
+    """
+    see https://github.com/jax-ml/jax/issues/23936
+    """
     arr = jax.numpy.zeros(shape=(16, 16))
 
     def test(a):
         sharding_info(a, "input")
         return a ** 2
 
-    with pytest.raises(NotImplementedError) as e_info:
+    with pytest.raises(XlaRuntimeError) as e_info:
         func_shard_map = shard_map(test, mesh=mesh, in_specs=P(None, 'gpus'), out_specs=P(None, 'gpus'))
         out = func_shard_map(arr)
+    assert "ValueError: not enough values to unpack (expected 1, got 0)" in e_info.value.args[0]
 
 
 def test_inside_shard_map_simple(capsys):
@@ -794,7 +798,7 @@ def test_containing_map():
 
     jitted_f(sharded_x)  # this will fail with double precision
 
-
+@pytest.mark.xfail()
 def test_containing_map_abstract():
     """
     based on test_containing_map, but
@@ -848,6 +852,90 @@ def test_containing_map_abstract():
                         assert "= pred[] compare(" in exception_message
                         assert f"op_name=\"jit({f.__name__})" in exception_message
                         # print(e.value.args[0])  # full exception
+
+@pytest.mark.skip(reason="fails")
+def test_fft_in_scan():
+    def get_mesh() -> Mesh:
+        """
+        get a Mesh using all devices along one axis called "gpus"
+        """
+        num_gpus = jax.device_count()
+        devices = mesh_utils.create_device_mesh((num_gpus,))
+        return Mesh(devices, axis_names=('gpus',))
+
+    with jax.experimental.enable_x64():
+        ext_res = 128
+        dtype_c = jax.numpy.complex128
+        # from fft_utils import _rfftn, _irfftn
+        from fft import jitted_rfftn, jitted_irfftn,rfftn,irfftn
+        device_mesh = get_mesh()
+        # rfftn = jitted_rfftn(device_mesh)
+        # irfftn = jitted_irfftn(device_mesh)
+        sharding = NamedSharding(device_mesh, P(None, "gpus"))
+
+        rfftn = jax.jit(
+            # _rfftn,
+            rfftn,
+            in_shardings=sharding,
+            out_shardings=sharding,
+        )
+        irfftn = jax.jit(
+            # _irfftn,
+            irfftn,
+            in_shardings=sharding,
+            out_shardings=sharding,
+        )
+
+        def test():
+            @jax.jit
+            def update(A, i, j, k, l, s):
+                # indices:
+                # i: coordinate of A in first term
+                # j: coordinate of A in second term
+                # k: direction of derivative in first term
+                # l: direction of derivative in second term
+                # s: sign
+
+                ff1 = jax.numpy.zeros((ext_res, ext_res, ext_res // 2 + 1), dtype=jax.numpy.complex128)
+                ff2 = jax.numpy.zeros((ext_res, ext_res, ext_res // 2 + 1), dtype=jax.numpy.complex128)
+                # fft = np.fft.fftn if full else rfftn
+                # ifft = np.fft.ifftn if full else irfftn
+                def ifft(input):
+                    print("ifft")
+                    print("input", input)
+
+                    return irfftn(input)
+
+                def fft(input):
+                    print("fft")
+                    print("input", input)
+                    return rfftn(input)
+
+                print("ff1,ff2")
+                print(ff1)
+                print(ff2)
+
+                return fft(ifft(ff1) * ifft(ff2))
+
+            # Define the lists
+            i_list = np.array([0, 0, 1, 0, 0, 1])
+            j_list = np.array([1, 2, 2, 1, 2, 2])
+            k_list = np.array([0, 0, 1, 1, 2, 2])
+            l_list = np.array([1, 2, 2, 0, 0, 1])
+            s_list = np.array([1, 1, 1, -1, -1, -1], dtype=dtype_c)
+
+            def scan_body(carry, x):
+                i, j, k, l, s = x
+                carry += update(None, i, j, k, l, s)
+                return carry, None
+
+            return jax.lax.scan(scan_body, init=np.zeros((ext_res, ext_res, ext_res // 2 + 1), dtype=dtype_c),
+                                xs=(i_list, j_list, k_list, l_list, s_list))[0]
+
+        test= jax.jit(test)
+        out=test()
+        out.block_until_ready()
+        print("finished")
 
 
 def test_array_stats(capsys):

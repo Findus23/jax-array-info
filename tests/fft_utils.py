@@ -15,6 +15,7 @@ def fft_partitioner(fft_func: Callable[[jax.Array], jax.Array], partition_spec: 
         return fft_func(x)
 
     def supported_sharding(sharding, shape):
+        assert sharding is not None
         return NamedSharding(sharding.mesh, partition_spec)
 
     def partition(mesh, arg_shapes, result_shape):

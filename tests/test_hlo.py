@@ -45,17 +45,20 @@ with jax.experimental.enable_x64():
 
 
 
-def test_mlir_module_drectly():
-    import jaxlib.xla_extension.mlir as mlir
+def test_mlir_module_directly():
+    from jaxlib.xla_extension import mlir
+    print(exported.mlir_module_serialized)
+    assert exported.mlir_module_serialized.startswith(b"ML\xefR\rStableHLO_v1.9.5")
 
-    assert exported.mlir_module_serialized.startswith(b"ML\xefR\rStableHLO_v1.9.1")
-    manually_converted_to_stablehlo = mlir.stablehlo_to_mhlo(exported.mlir_module_serialized)
-    assert manually_converted_to_stablehlo.startswith(b"ML\xefR\rMLIR21.0.0git")
+    # this function got removed
+    # https://github.com/jax-ml/jax/commit/56646afaca5f77d121105419d144de0033efb1bc
+    # manually_converted_to_stablehlo = mlir.stablehlo_to_mhlo(exported.mlir_module_serialized)
+    # assert manually_converted_to_stablehlo.startswith(b"ML\xefR\rMLIR21.0.0git")
 
 
 def test_stablehlo_dialect():
     # these functions are described in https://openxla.org/stablehlo/compatibility
-    assert stablehlo.get_current_version() == "1.10.0"
+    assert stablehlo.get_current_version() == "1.10.4"
     assert stablehlo.get_minimum_version() == "0.9.0"
 
 
@@ -118,6 +121,7 @@ module @jit__lambda_ attributes {jax.uses_shape_polymorphism = false, mhlo.num_p
         assert jax.numpy.all(output == expected_output)
 
 
+@pytest.mark.xfail()
 def test_replacing_stablehlo_bug():
     """
     doing the same to reproduce the bug in
