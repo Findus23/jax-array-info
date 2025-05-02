@@ -67,7 +67,7 @@ def simple_array_info(arr: SupportedArray, name: str = None):
 
 def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], console: Console):
     shape = arr.shape
-    console.print(f"shape: {shape}")
+    sharded_axes = set()
     console.print(f"dtype: {arr.dtype}")
     if len(shape) == 0:
         console.print(f"value: {arr}")
@@ -77,7 +77,7 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
 
     if isinstance(arr, np.ndarray):
         console.print("[bold]numpy array")
-        return
+        return sharded_axes
     if not isinstance(arr, (Array, jax.ShapeDtypeStruct)):
         raise ValueError(f"is not a jax array, got {type(arr)}")
 
@@ -97,7 +97,7 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
     # if not arr.is_fully_replicated:
     #     console.print("!is_fully_replicated")
     if sharding is None:
-        return
+        return sharded_axes
 
     device_kind = next(iter(sharding.device_set)).platform.upper()
 
@@ -126,17 +126,40 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
     for i, sl in enumerate(slcs):
         if sl.start is None:
             continue
+        sharded_axes.add(i)
         local_size = sl.stop - sl.start
         global_size = shape[i]
         num_shards = global_size // local_size
         console.print(f"axis {i} is sharded: {device_kind} 0 contains {sl.start}:{sl.stop} (1/{num_shards})")
         console.print(f"                   Total size: {global_size}")
 
+    return sharded_axes
+
+
+def format_shape(shape: tuple[int, ...], sharded_axes: set[int]):
+    text = [("(", "blue")]
+    for i,dim in enumerate(shape):
+        style="bold magenta"
+        if i in sharded_axes:
+            style="bold dark_green"
+        text.append((str(dim), style))
+        if i !=len(shape) - 1:
+            text.append((", ", ""))
+        elif len(shape) == 1:
+            text.append((",", ""))
+    text.append((")", "blue"))
+    return Text.assemble(*text)
 
 def print_sharding_info(arr: SupportedArray, sharding: Optional[Sharding], name: str = None):
     console = rich.console.Console()
     with console.capture() as capture:
-        _print_sharding_info_raw(arr, sharding, console)
+        sharded_axes = _print_sharding_info_raw(arr, sharding, console)
     str_output = capture.get()
     text = Text.from_ansi(str_output)
-    console.print(Panel(text, expand=False, title=f"[bold]{name}" if name is not None else None))
+    with console.capture() as capture:
+        shape_text = format_shape(arr.shape, sharded_axes)
+        console.print("shape:",shape_text)
+    str_output = capture.get()
+    text_shape = Text.from_ansi(str_output)
+
+    console.print(Panel(text_shape + "\n" + text, expand=False, title=f"[bold]{name}" if name is not None else None))
