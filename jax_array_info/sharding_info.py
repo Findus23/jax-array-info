@@ -139,9 +139,9 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
 def format_shape(shape: tuple[int, ...], sharded_axes: set[int]):
     text = [("(", "blue")]
     for i,dim in enumerate(shape):
-        style="bold magenta"
+        style = "bold magenta"
         if i in sharded_axes:
-            style="bold dark_green"
+            style = "bold green"
         text.append((str(dim), style))
         if i !=len(shape) - 1:
             text.append((", ", ""))
