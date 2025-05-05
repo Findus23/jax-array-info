@@ -99,6 +99,9 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
     if sharding is None:
         return sharded_axes
 
+    if hasattr(arr,"vma") and arr.vma:
+        console.print(f"vma: {set(arr.vma)}")
+
     device_kind = next(iter(sharding.device_set)).platform.upper()
 
     if device_kind == "gpu" and sharding.memory_kind != "device":
