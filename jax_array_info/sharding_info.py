@@ -6,7 +6,7 @@ import rich
 from jax import Array, Device
 from jax.core import Tracer
 from jax.debug import inspect_array_sharding
-from jax.sharding import Sharding, NamedSharding, GSPMDSharding, SingleDeviceSharding, PmapSharding, PositionalSharding
+from jax.sharding import Sharding, NamedSharding, SingleDeviceSharding, PmapSharding
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -68,6 +68,8 @@ def simple_array_info(arr: SupportedArray, name: str = None):
 def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], console: Console):
     shape = arr.shape
     sharded_axes = set()
+    vma_axes = set()
+    # console.print(f"shape: {shape}")
     console.print(f"dtype: {arr.dtype}")
     if len(shape) == 0:
         console.print(f"value: {arr}")
@@ -77,7 +79,7 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
 
     if isinstance(arr, np.ndarray):
         console.print("[bold]numpy array")
-        return sharded_axes
+        return sharded_axes, vma_axes
     if not isinstance(arr, (Array, jax.ShapeDtypeStruct)):
         raise ValueError(f"is not a jax array, got {type(arr)}")
 
@@ -97,9 +99,9 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
     # if not arr.is_fully_replicated:
     #     console.print("!is_fully_replicated")
     if sharding is None:
-        return sharded_axes
+        return sharded_axes, vma_axes
 
-    if hasattr(arr,"vma") and arr.vma:
+    if hasattr(arr, "vma") and arr.vma:
         console.print(f"vma: {set(arr.vma)}")
 
     device_kind = next(iter(sharding.device_set)).platform.upper()
@@ -112,13 +114,12 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
         if len(jax.devices()) > 1:
             # only warn about missing sharding if multiple devices are used
             console.print("[red]not sharded")
-    if isinstance(sharding, GSPMDSharding):
-        console.print(sharding)
-    if isinstance(sharding, PositionalSharding):
-        console.print(f"PositionalSharding:")
-        console.print(sharding._ids)
     if isinstance(sharding, NamedSharding):
         console.print(f"NamedSharding: P{tuple(sharding.spec)}")
+        if hasattr(arr, "vma") and arr.vma:
+            for i, val in enumerate(sharding.spec):
+                if val in arr.vma:
+                    vma_axes.add(i)
 
     if isinstance(sharding, PmapSharding):
         console.print(sharding)
@@ -136,15 +137,18 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
         console.print(f"axis {i} is sharded: {device_kind} 0 contains {sl.start}:{sl.stop} (1/{num_shards})")
         console.print(f"                   Total size: {global_size}")
 
-    return sharded_axes
+    return sharded_axes, vma_axes
 
 
-def format_shape(shape: tuple[int, ...], sharded_axes: set[int]):
+
+def format_shape(shape: tuple[int, ...], sharded_axes: set[int], vma_axes:set[int]):
     text = [("(", "blue")]
     for i,dim in enumerate(shape):
         style = "bold magenta"
         if i in sharded_axes:
             style = "bold green"
+        if i in vma_axes:
+            style = "bold bright_green"
         text.append((str(dim), style))
         if i !=len(shape) - 1:
             text.append((", ", ""))
@@ -156,11 +160,11 @@ def format_shape(shape: tuple[int, ...], sharded_axes: set[int]):
 def print_sharding_info(arr: SupportedArray, sharding: Optional[Sharding], name: str = None):
     console = rich.console.Console()
     with console.capture() as capture:
-        sharded_axes = _print_sharding_info_raw(arr, sharding, console)
+        sharded_axes, vma_axes = _print_sharding_info_raw(arr, sharding, console)
     str_output = capture.get()
     text = Text.from_ansi(str_output)
     with console.capture() as capture:
-        shape_text = format_shape(arr.shape, sharded_axes)
+        shape_text = format_shape(arr.shape, sharded_axes, vma_axes)
         console.print("shape:",shape_text)
     str_output = capture.get()
     text_shape = Text.from_ansi(str_output)
