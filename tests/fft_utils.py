@@ -53,8 +53,8 @@ def _irfft_Z(x):
 
 fftn_XY = fft_partitioner(_fftn_XY, P(None, None, "gpus"), sharding_rule="x y z -> x y z")
 rfft_Z = fft_partitioner(_rfft_Z, P(None, "gpus"), sharding_rule="x y z -> x y z_new")
-ifftn_XY = fft_partitioner(_ifftn_XY, P(None, None, "gpus"))
-irfft_Z = fft_partitioner(_irfft_Z, P(None, "gpus"))
+ifftn_XY = fft_partitioner(_ifftn_XY, P(None, None, "gpus"), sharding_rule="x y z -> x y z")
+irfft_Z = fft_partitioner(_irfft_Z, P(None, "gpus"), sharding_rule="x y z -> x y z_new")
 
 
 def _rfftn(x):

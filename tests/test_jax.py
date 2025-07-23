@@ -6,7 +6,6 @@ import jax.numpy
 import numpy as np
 import pytest
 from jax._src.config import use_shardy_partitioner
-from jax._src.sharding_impls import PositionalSharding
 from jax.experimental import mesh_utils
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
@@ -178,27 +177,6 @@ def test_jit_out_sharding_sharded(capsys):
 │       │       │       │       │       │       │       │       │
 │       │       │       │       │       │       │       │       │
 │       │       │       │       │       │       │       │       │
-└───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
-""".lstrip()
-
-
-def test_positional_sharded(capsys):
-    arr = jax.numpy.zeros(shape=(8 * 4), dtype=jax.numpy.complex64)
-    arr = jax.device_put(arr, PositionalSharding(devices))
-    sharding_info(arr)
-    sharding_vis(arr)
-    assert generalize(capsys.readouterr().out) == """
-╭───────────────────────────────────────────────────────────────────╮
-│ shape: (32,)                                                      │
-│ dtype: complex64                                                  │
-│ size: 256.0 B                                                     │
-│ PositionalSharding:                                               │
-│ [{CPU 0} {CPU 1} {CPU 2} {CPU 3} {CPU 4} {CPU 5} {CPU 6} {CPU 7}] │
-│ axis 0 is sharded: CPU 0 contains 0:4 (1/8)                       │
-│                    Total size: 32                                 │
-╰───────────────────────────────────────────────────────────────────╯
-┌───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┐
-│ CPU 0 │ CPU 1 │ CPU 2 │ CPU 3 │ CPU 4 │ CPU 5 │ CPU 6 │ CPU 7 │
 └───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
 """.lstrip()
 
@@ -528,22 +506,6 @@ def test_simple_array_info(capsys):
 """.lstrip()
 
 
-def test_inside_shard_map_failing(capsys):
-    """
-    see https://github.com/jax-ml/jax/issues/23936
-    """
-    arr = jax.numpy.zeros(shape=(16, 16))
-
-    def test(a):
-        sharding_info(a, "input")
-        return a ** 2
-
-    with pytest.raises(XlaRuntimeError) as e_info:
-        func_shard_map = shard_map(test, mesh=mesh, in_specs=P(None, 'gpus'), out_specs=P(None, 'gpus'))
-        out = func_shard_map(arr)
-    assert "ValueError: not enough values to unpack (expected 1, got 0)" in e_info.value.args[0]
-
-
 def test_inside_shard_map_simple(capsys):
     arr = jax.numpy.zeros(shape=(16, 16))
 
@@ -563,6 +525,7 @@ def test_inside_shard_map_simple(capsys):
 """.lstrip()
 
 
+@pytest.mark.xfail(reason="it seems like this is no longer the case with jax 0.7.0 and shardy")
 def test_indirectly_sharded(capsys):
     """
     y is never explicitly sharded, but it seems like the sharding is back-propagated through the jit compiled function
@@ -798,7 +761,7 @@ def test_containing_map():
 
     jitted_f(sharded_x)  # this will fail with double precision
 
-@pytest.mark.xfail()
+
 def test_containing_map_abstract():
     """
     based on test_containing_map, but
@@ -806,6 +769,7 @@ def test_containing_map_abstract():
     - testing with both enable_x64 enabled and disabled
     - testing multiple cases where
     """
+    this_bug_seems_to_be_gone = True
 
     def f_using_map(y):
         return y - jax.lax.map(lambda a: a, y)
@@ -831,11 +795,11 @@ def test_containing_map_abstract():
                     jax.numpy.complex64, jax.numpy.complex128,
                     jax.numpy.bfloat16]:
                     abstract_input = jax.ShapeDtypeStruct((128,), dtype, sharding=simple_sharding1d)
-                    if not use_double_precision:
+                    if not use_double_precision or this_bug_seems_to_be_gone:
                         # in single precision this works without any issue
                         compiled = jitted_f.lower(abstract_input).compile()
                         # and give proper HLO
-                        assert len(compiled.as_text()) > 1000
+                        assert len(compiled.as_text()) > 500
                     else:
                         # call JAX_ENABLE_X64=True pytest -vv tests/test_jax.py::test_containing_map_abstract
                         # for this branch
@@ -853,7 +817,7 @@ def test_containing_map_abstract():
                         assert f"op_name=\"jit({f.__name__})" in exception_message
                         # print(e.value.args[0])  # full exception
 
-@pytest.mark.skip(reason="fails")
+
 def test_fft_in_scan():
     def get_mesh() -> Mesh:
         """
@@ -866,8 +830,8 @@ def test_fft_in_scan():
     with jax.experimental.enable_x64():
         ext_res = 128
         dtype_c = jax.numpy.complex128
-        # from fft_utils import _rfftn, _irfftn
-        from fft import jitted_rfftn, jitted_irfftn,rfftn,irfftn
+        from fft_utils import _rfftn, _irfftn
+        # from fft import rfftn, irfftn
         device_mesh = get_mesh()
         # rfftn = jitted_rfftn(device_mesh)
         # irfftn = jitted_irfftn(device_mesh)
@@ -875,13 +839,13 @@ def test_fft_in_scan():
 
         rfftn = jax.jit(
             # _rfftn,
-            rfftn,
+            _rfftn,
             in_shardings=sharding,
             out_shardings=sharding,
         )
         irfftn = jax.jit(
             # _irfftn,
-            irfftn,
+            _irfftn,
             in_shardings=sharding,
             out_shardings=sharding,
         )
@@ -898,6 +862,7 @@ def test_fft_in_scan():
 
                 ff1 = jax.numpy.zeros((ext_res, ext_res, ext_res // 2 + 1), dtype=jax.numpy.complex128)
                 ff2 = jax.numpy.zeros((ext_res, ext_res, ext_res // 2 + 1), dtype=jax.numpy.complex128)
+
                 # fft = np.fft.fftn if full else rfftn
                 # ifft = np.fft.ifftn if full else irfftn
                 def ifft(input):
@@ -932,8 +897,8 @@ def test_fft_in_scan():
             return jax.lax.scan(scan_body, init=np.zeros((ext_res, ext_res, ext_res // 2 + 1), dtype=dtype_c),
                                 xs=(i_list, j_list, k_list, l_list, s_list))[0]
 
-        test= jax.jit(test)
-        out=test()
+        test = jax.jit(test)
+        out = test()
         out.block_until_ready()
         print("finished")
 

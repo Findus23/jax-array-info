@@ -89,17 +89,17 @@ def test_multihost_device_put():
 │                    Total size: 32           │
 ╰─────────────────────────────────────────────╯
 ───────────── showing dims [0, 1] from original shape (32, 32, 32) ─────────────
-┌───────┬──────────┬──────────┬──────────┐
-│       │          │          │          │
-│       │          │          │          │
-│       │          │          │          │
-│       │          │          │          │
-│ CPU 0 │CPU 131072│CPU 262144│CPU 393216│
-│       │          │          │          │
-│       │          │          │          │
-│       │          │          │          │
-│       │          │          │          │
-└───────┴──────────┴──────────┴──────────┘
+┌───────┬────────┬────────┬────────┐
+│       │        │        │        │
+│       │        │        │        │
+│       │        │        │        │
+│       │        │        │        │
+│ CPU 0 │CPU 2048│CPU 4096│CPU 6144│
+│       │        │        │        │
+│       │        │        │        │
+│       │        │        │        │
+│       │        │        │        │
+└───────┴────────┴────────┴────────┘
                             allocated jax arrays                            
 ┏━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
 ┃ size     ┃ shape        ┃ dtype     ┃       sharded       ┃ label        ┃
@@ -110,7 +110,7 @@ def test_multihost_device_put():
 └──────────┴──────────────┴───────────┴─────────────────────┴──────────────┘
 """.lstrip()
     check_multihost("run_multihost_device_put", expected, num_processes=4)
-    # I'll assume for now that the CPU ids are deterministic as they are exactly 2^17 apart
+    # I'll assume for now that the CPU ids are deterministic as they are exactly 2^11 apart
 
 
 def test_multihost_closure():
@@ -185,13 +185,13 @@ def test_shard_map():
 │ size: 16.0 KiB     │
 │ called in jit      │
 ╰────────────────────╯
-╭───────── out ─────────╮
-│ shape: (128, 32)      │
-│ dtype: float32        │
-│ size: 16.0 KiB        │
-│ !is_fully_addressable │
-│ NamedSharding: P()    │
-╰───────────────────────╯
+╭────────── out ──────────╮
+│ shape: (128, 32)        │
+│ dtype: float32          │
+│ size: 16.0 KiB          │
+│ !is_fully_addressable   │
+│ NamedSharding: P(None,) │
+╰─────────────────────────╯
 ╭─ x (in shard_map) ─╮
 │ shape: (128, 32)   │
 │ dtype: float32     │

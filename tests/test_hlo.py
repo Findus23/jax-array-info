@@ -46,9 +46,9 @@ with jax.experimental.enable_x64():
 
 
 def test_mlir_module_directly():
-    from jaxlib.xla_extension import mlir
+    from jax.lib.xla_extension import mlir
     print(exported.mlir_module_serialized)
-    assert exported.mlir_module_serialized.startswith(b"ML\xefR\rStableHLO_v1.9.5")
+    assert exported.mlir_module_serialized.startswith(b"ML\xefR\rStableHLO_v1.11.0")
 
     # this function got removed
     # https://github.com/jax-ml/jax/commit/56646afaca5f77d121105419d144de0033efb1bc
@@ -58,15 +58,16 @@ def test_mlir_module_directly():
 
 def test_stablehlo_dialect():
     # these functions are described in https://openxla.org/stablehlo/compatibility
-    assert stablehlo.get_current_version() == "1.10.4"
+    assert stablehlo.get_current_version() == "1.12.1"
     assert stablehlo.get_minimum_version() == "0.9.0"
 
 
 def test_lowered():
     assert "return %arg0 : tensor<128xf64>" in lowered.as_text()
     assert lowered.as_text() == """
-module @jit__lambda_ attributes {mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
-  func.func public @main(%arg0: tensor<128xf64> {mhlo.sharding = "{devices=[8]<=[8]}"}) -> (tensor<128xf64> {jax.result_info = "result"}) {
+module @jit__lambda attributes {mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
+  sdy.mesh @mesh = <["a"=8]>
+  func.func public @main(%arg0: tensor<128xf64> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) -> (tensor<128xf64> {jax.result_info = "result"}) {
     return %arg0 : tensor<128xf64>
   }
 }
@@ -80,8 +81,9 @@ def test_reading_stablehlo():
     stablehlo_str = out.operation.get_asm(enable_debug_info=False)
     # this is essentially identical to lowered.as_text(), with minor debug info differences
     assert stablehlo_str == """
-module @jit__lambda_ attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
-  func.func public @main(%arg0: tensor<128xf64> {mhlo.sharding = "{devices=[8]<=[8]}"}) -> (tensor<128xf64> {jax.result_info = "result"}) {
+module @jit__lambda attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
+  sdy.mesh @mesh = <["a"=8]>
+  func.func public @main(%arg0: tensor<128xf64> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) -> (tensor<128xf64> {jax.result_info = "result"}) {
     return %arg0 : tensor<128xf64>
   }
 }
@@ -96,6 +98,40 @@ def test_replacing_stablehlo_trivial_case():
     custom_stablehlo = """
 module @jit__lambda_ attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
   func.func public @main(%arg0: tensor<128xf64> {mhlo.sharding = "{devices=[8]<=[8]}"}) -> (tensor<128xf64> {jax.result_info = "result"}) {
+    %some_int_constant = stablehlo.constant dense<42> : tensor<i64>
+    %const_as_float = stablehlo.convert %some_int_constant : (tensor<i64>) -> tensor<f64>
+    %filled_array = stablehlo.broadcast_in_dim %const_as_float, dims = [] : (tensor<f64>) -> tensor<128xf64>
+    // add the full 42-array to the input and return the result
+    %output = stablehlo.add %filled_array, %arg0 : tensor<128xf64>
+
+    return %output : tensor<128xf64>
+  }
+}
+"""
+    with jax.experimental.enable_x64():
+        mlir_module_replaced = stablehlo.serialize_portable_artifact_str(custom_stablehlo, stablehlo.get_current_version())
+        # this should replace the no-op function with one that adds 42 to all entries
+        replaced_function = dataclasses.replace(exported, mlir_module_serialized=mlir_module_replaced)
+
+        # create actual input for the function
+        input = jax.numpy.full(input_shape, 1, dtype=input_dtype)
+        expected_output = jax.numpy.full(input_shape, 1. + 42., dtype=input_dtype)
+        input = jax.device_put(input, input_sharding)
+        expected_output = jax.device_put(expected_output, input_sharding)
+
+        output = replaced_function.call(input)
+        assert jax.numpy.all(output == expected_output)
+
+@pytest.mark.xfail(reason="using serialize_portable_artifact_str like this doesn't work anymore with shardy and jax 0.7.0")
+def test_replacing_stablehlo_trivial_case_shardy():
+    """
+    replace the lambda a: a function defined above with one that adds 42 to all entries
+    by replacing the stablehlo
+    """
+    custom_stablehlo = """
+module @jit__lambda attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 8 : i32, mhlo.num_replicas = 1 : i32} {
+  sdy.mesh @mesh = <["a"=8]>
+  func.func public @main(%arg0: tensor<128xf64> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) -> (tensor<128xf64> {jax.result_info = "result"}) {
     %some_int_constant = stablehlo.constant dense<42> : tensor<i64>
     %const_as_float = stablehlo.convert %some_int_constant : (tensor<i64>) -> tensor<f64>
     %filled_array = stablehlo.broadcast_in_dim %const_as_float, dims = [] : (tensor<f64>) -> tensor<128xf64>
