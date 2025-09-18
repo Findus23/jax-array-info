@@ -734,6 +734,84 @@ def test_make_array_from_single_device_arrays(capsys):
 """.lstrip()
 
 
+def test_reshape_of_sharded_array(capsys):
+    """
+    If we have an array sharded along one axis and we reshape it, which axis will be sharded afterwards?
+    -> axis 0 (the outermost axis)
+    """
+    arr = jax.numpy.zeros(shape=512)
+    arr = jax.device_put(arr, simple_sharding1d)
+    reshaped = arr.reshape(8, 8, 8)
+    sharding_info(reshaped)
+    assert generalize(capsys.readouterr().out) == """
+╭─────────────────────────────────────────────╮
+│ shape: (8, 8, 8)                            │
+│ dtype: float32                              │
+│ size: 2.0 KiB                               │
+│ NamedSharding: P('gpus',)                   │
+│ axis 0 is sharded: CPU 0 contains 0:1 (1/8) │
+│                    Total size: 8            │
+╰─────────────────────────────────────────────╯
+""".lstrip()
+
+
+def test_reshape_sharded_array(capsys):
+    """
+    merging a sharded axis with another in a reshape
+    results in the merged axis to be sharded
+    """
+    arr = jax.numpy.zeros(shape=(32, 32, 32))
+    arr = jax.device_put(arr, simple_sharding)
+    arr = arr.reshape((32, 32 * 32))
+    sharding_info(arr)
+    assert generalize(capsys.readouterr().out) == """
+╭───────────────────────────────────────────────╮
+│ shape: (32, 1024)                             │
+│ dtype: float32                                │
+│ size: 128.0 KiB                               │
+│ NamedSharding: P(None, 'gpus')                │
+│ axis 1 is sharded: CPU 0 contains 0:128 (1/8) │
+│                    Total size: 1024           │
+╰───────────────────────────────────────────────╯
+""".lstrip()
+
+def test_like(capsys):
+    """
+    functions such as jnp.ones_like, etc. don't seem to imply creating the same sharding
+    :param capsys:
+    :return:
+    """
+    arr = jax.numpy.zeros(shape=(32, 32, 32))
+    arr = jax.device_put(arr, simple_sharding1d)
+
+    def some_function(input):
+        some_data = jax.numpy.ones_like(input)
+        return input, some_data
+
+    some_function = jax.jit(some_function)
+
+    input, output = some_function(arr)
+
+    sharding_info(input, "input")
+    sharding_info(output, "output")
+    assert generalize(capsys.readouterr().out) == """
+╭─────────────────── input ───────────────────╮
+│ shape: (32, 32, 32)                         │
+│ dtype: float32                              │
+│ size: 128.0 KiB                             │
+│ NamedSharding: P('gpus',)                   │
+│ axis 0 is sharded: CPU 0 contains 0:4 (1/8) │
+│                    Total size: 32           │
+╰─────────────────────────────────────────────╯
+╭────── output ───────╮
+│ shape: (32, 32, 32) │
+│ dtype: float32      │
+│ size: 128.0 KiB     │
+│ NamedSharding: P()  │
+╰─────────────────────╯
+""".lstrip()
+
+
 def test_containing_map():
     """
     testcase adapted from https://github.com/jax-ml/jax/issues/19691#issuecomment-2181170116
