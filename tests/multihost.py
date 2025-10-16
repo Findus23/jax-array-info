@@ -8,9 +8,9 @@ from typing import Callable
 
 import jax.distributed
 import numpy as onp
+from jax import shard_map
 from jax.experimental import mesh_utils
 from jax.experimental.multihost_utils import process_allgather, broadcast_one_to_all, host_local_array_to_global_array
-from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 
 from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info
@@ -159,7 +159,7 @@ def run_host_local_array_to_global_array():
     assert original_array.shape == global_arr.shape
 
     # check that the array didn't change
-    collected_again = process_allgather(global_arr)
+    collected_again = process_allgather(global_arr, tiled=True)
     assert jax.numpy.allclose(collected_again, original_array)
 
 
@@ -169,7 +169,7 @@ def run_process_allgather():
     """
     arr = get_sharded_array((128, 128))
     assert not arr.is_fully_addressable
-    arr_np = process_allgather(arr)
+    arr_np = process_allgather(arr, tiled=True)
     assert isinstance(arr_np, onp.ndarray)
     sharding_info(arr_np, "arr_np")
     assert arr_np.shape == arr.shape

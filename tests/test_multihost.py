@@ -50,6 +50,14 @@ def check_multihost(testname: str, expected_stdout: str, num_processes: int = 4,
             assert proc.returncode == 55
         stdout = proc.stdout.read().decode()
         local_expected_stdout = expected_stdout.replace("[IDX]", str(i))
+        lines = stdout.split("\n")
+        trimmed_lines = []
+        for line in lines:
+            # https://github.com/jax-ml/jax/issues/32673
+            if "Expected number of connected peer ranks" not in line:
+                trimmed_lines.append(line)
+        stdout = "\n".join(trimmed_lines)
+
         assert stdout == local_expected_stdout, f"failure at process {i}"
 
 

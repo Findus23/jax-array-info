@@ -24,7 +24,7 @@ import rich
 from jax import Array
 from jax._src.debugging import _raise_to_slice, _slice_to_chunk_idx, inspect_array_sharding, ColorMap, make_color_iter, \
     _canonicalize_color, _get_text_color
-from jax.sharding import Sharding, PmapSharding
+from jax.sharding import Sharding
 
 
 def sharding_vis(arr: Array, **kwargs):
@@ -78,11 +78,7 @@ def visualize_sharding(shape: Sequence[int], sharding: Sharding, *,
     widths: Dict[Tuple[int, ...], float] = {}
 
     dims = list(range(len(shape)))
-    if isinstance(sharding, PmapSharding):
-        console.print("[red bold]Output for PmapSharding might be incorrect")
-        if len(shape) > 2:
-            raise NotImplementedError("can only visualize PmapSharding with shapes with less than 3 dimensions")
-    if len(shape) > 2 and not isinstance(sharding, PmapSharding):
+    if len(shape) > 2:
         sharded_dims = get_sharded_dims(shape, sharding)
         if len(sharded_dims) > 2:
             raise NotImplementedError(f"can only visualize up to 2 sharded dimension. {sharded_dims} are sharded.")

@@ -38,7 +38,7 @@ input_dtype = jax.numpy.float64
 input_sharding = sharding
 abstract_input = jax.ShapeDtypeStruct(input_shape, input_dtype, sharding=input_sharding)
 
-with jax.experimental.enable_x64():
+with jax.enable_x64():
     exported = export(jitted_f)(abstract_input)
     lowered = jitted_f.lower(abstract_input)
     compiled = lowered.compile()
@@ -46,9 +46,8 @@ with jax.experimental.enable_x64():
 
 
 def test_mlir_module_directly():
-    from jax.lib.xla_extension import mlir
     print(exported.mlir_module_serialized)
-    assert exported.mlir_module_serialized.startswith(b"ML\xefR\rStableHLO_v1.11.0")
+    assert exported.mlir_module_serialized.startswith(b"ML\xefR\rStableHLO_v1.12.1")
 
     # this function got removed
     # https://github.com/jax-ml/jax/commit/56646afaca5f77d121105419d144de0033efb1bc
@@ -58,7 +57,7 @@ def test_mlir_module_directly():
 
 def test_stablehlo_dialect():
     # these functions are described in https://openxla.org/stablehlo/compatibility
-    assert stablehlo.get_current_version() == "1.12.1"
+    assert stablehlo.get_current_version() == "1.13.1"
     assert stablehlo.get_minimum_version() == "0.9.0"
 
 
@@ -108,7 +107,7 @@ module @jit__lambda_ attributes {jax.uses_shape_polymorphism = false, mhlo.num_p
   }
 }
 """
-    with jax.experimental.enable_x64():
+    with jax.enable_x64():
         mlir_module_replaced = stablehlo.serialize_portable_artifact_str(custom_stablehlo, stablehlo.get_current_version())
         # this should replace the no-op function with one that adds 42 to all entries
         replaced_function = dataclasses.replace(exported, mlir_module_serialized=mlir_module_replaced)
@@ -142,7 +141,7 @@ module @jit__lambda attributes {jax.uses_shape_polymorphism = false, mhlo.num_pa
   }
 }
 """
-    with jax.experimental.enable_x64():
+    with jax.enable_x64():
         mlir_module_replaced = stablehlo.serialize_portable_artifact_str(custom_stablehlo, stablehlo.get_current_version())
         # this should replace the no-op function with one that adds 42 to all entries
         replaced_function = dataclasses.replace(exported, mlir_module_serialized=mlir_module_replaced)
@@ -173,7 +172,7 @@ module @jit_f attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitio
     return %output : tensor<128xf64>
   }
 }"""
-    with jax.experimental.enable_x64():
+    with jax.enable_x64():
         mlir_module_replaced = stablehlo.serialize_portable_artifact_str(custom_stablehlo, stablehlo.get_current_version())
         replaced_function = dataclasses.replace(exported, mlir_module_serialized=mlir_module_replaced)
 

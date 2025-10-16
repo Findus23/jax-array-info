@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from jax._src.config import use_shardy_partitioner
 from jax.experimental import mesh_utils
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 from jaxlib.xla_client import XlaRuntimeError
 
@@ -218,23 +218,26 @@ def test_in_jit(capsys):
 
 
 def test_pmap(capsys):
+    """
+    This is mostly useless now that pmap is deprecated and implemented using shard_map
+    """
+    import re
     arr = jax.numpy.zeros(shape=(8, 8 * 3), dtype=jax.numpy.complex64)
     arr = jax.pmap(lambda x: x ** 2)(arr)
     sharding_info(arr)
     sharding_vis(arr)
+    output=generalize(capsys.readouterr().out)
+    output=re.sub(r"<axis 0x\w+>", "<axis 0xaaaaaaaaaaaa>", output)
 
-    assert generalize(capsys.readouterr().out) == """
-╭──────────────────────────────────────────────────────────────────────╮
-│ shape: (8, 24)                                                       │
-│ dtype: complex64                                                     │
-│ size: 1.5 KiB                                                        │
-│ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
-│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
-│ device_platform=CPU, device_shape=(8,))                              │
-│ axis 0 is sharded: CPU 0 contains 0:1 (1/8)                          │
-│                    Total size: 8                                     │
-╰──────────────────────────────────────────────────────────────────────╯
-Output for PmapSharding might be incorrect
+    assert output == """
+╭─────────────────────────────────────────────╮
+│ shape: (8, 24)                              │
+│ dtype: complex64                            │
+│ size: 1.5 KiB                               │
+│ NamedSharding: P('<axis 0xaaaaaaaaaaaa>',)  │
+│ axis 0 is sharded: CPU 0 contains 0:1 (1/8) │
+│                    Total size: 8            │
+╰─────────────────────────────────────────────╯
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                                  CPU 0                                  │
 ├─────────────────────────────────────────────────────────────────────────┤
@@ -785,7 +788,7 @@ def test_containing_map_abstract():
         # while normally one should always set enable_x64 globally,
         # for this test it also works if we switch it up here
         # as we compile everything inside the context manager without global state
-        with jax.experimental.enable_x64(use_double_precision):
+        with jax.enable_x64(use_double_precision):
             for f in [f_using_map, f_using_scan, f_using_dynamic_update_slice]:
                 jitted_f = jax.jit(f)
                 # this seems to be independent of the dtype of the input array, so try a few of them
@@ -827,7 +830,7 @@ def test_fft_in_scan():
         devices = mesh_utils.create_device_mesh((num_gpus,))
         return Mesh(devices, axis_names=('gpus',))
 
-    with jax.experimental.enable_x64():
+    with jax.enable_x64():
         ext_res = 128
         dtype_c = jax.numpy.complex128
         from fft_utils import _rfftn, _irfftn

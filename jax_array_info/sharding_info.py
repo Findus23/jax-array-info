@@ -6,7 +6,7 @@ import rich
 from jax import Array, Device
 from jax.core import Tracer
 from jax.debug import inspect_array_sharding
-from jax.sharding import Sharding, NamedSharding, SingleDeviceSharding, PmapSharding
+from jax.sharding import Sharding, NamedSharding, SingleDeviceSharding
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -121,9 +121,6 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
                 if val in arr.vma:
                     vma_axes.add(i)
 
-    if isinstance(sharding, PmapSharding):
-        console.print(sharding)
-        # return
     device_indices_map = sharding.devices_indices_map(tuple(shape))
     slcs = next(iter(device_indices_map.values()))
     sl: slice
