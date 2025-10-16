@@ -52,7 +52,7 @@ def print_array_stats(hide_small_arrays: bool = False):
         if multiple_devices:
             columns.append(f"✔ ({pretty_byte_size(arr.nbytes)} total)" if is_sharded else "")
 
-            label = ""
+        label = ""
         if config.assign_labels_to_arrays and any_label_exists:
             if hasattr(arr, "_custom_label"):
                 label = arr._custom_label
