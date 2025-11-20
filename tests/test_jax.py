@@ -665,58 +665,6 @@ def test_nondefault_device(capsys):
 ╰────────────────────╯
 """.lstrip()
 
-
-def test_device_put_replicated(capsys):
-    some_array = jax.numpy.zeros(16)
-    replicated_array = jax.device_put_replicated(some_array, jax.devices())
-    sharding_info(replicated_array)
-
-    assert generalize(capsys.readouterr().out) == """
-╭──────────────────────────────────────────────────────────────────────╮
-│ shape: (8, 16)                                                       │
-│ dtype: float32                                                       │
-│ size: 512.0 B                                                        │
-│ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
-│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
-│ device_platform=CPU, device_shape=(8,))                              │
-│ axis 0 is sharded: CPU 0 contains 0:1 (1/8)                          │
-│                    Total size: 8                                     │
-╰──────────────────────────────────────────────────────────────────────╯
-""".lstrip()
-
-
-def test_device_put_sharded(capsys):
-    list_of_arrays = []
-    for i in range(len(jax.devices())):
-        some_array = jax.numpy.full((3,), i)
-        list_of_arrays.append(some_array)
-    replicated_array = jax.device_put_sharded(list_of_arrays, jax.devices())
-    sharding_info(replicated_array)
-    reference = jax.numpy.array([[0, 0, 0],
-                                 [1, 1, 1],
-                                 [2, 2, 2],
-                                 [3, 3, 3],
-                                 [4, 4, 4],
-                                 [5, 5, 5],
-                                 [6, 6, 6],
-                                 [7, 7, 7]])
-    assert jax.numpy.all(replicated_array == reference)
-
-    assert generalize(capsys.readouterr().out) == """
-╭──────────────────────────────────────────────────────────────────────╮
-│ shape: (8, 3)                                                        │
-│ dtype: int32                                                         │
-│ size: 96.0 B                                                         │
-│ weakly-typed                                                         │
-│ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
-│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
-│ device_platform=CPU, device_shape=(8,))                              │
-│ axis 0 is sharded: CPU 0 contains 0:1 (1/8)                          │
-│                    Total size: 8                                     │
-╰──────────────────────────────────────────────────────────────────────╯
-""".lstrip()
-
-
 def test_make_array_from_single_device_arrays(capsys):
     list_of_arrays = []
     for i, device in enumerate(jax.devices()):

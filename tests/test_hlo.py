@@ -47,7 +47,7 @@ with jax.enable_x64():
 
 def test_mlir_module_directly():
     print(exported.mlir_module_serialized)
-    assert exported.mlir_module_serialized.startswith(b"ML\xefR\rStableHLO_v1.12.1")
+    assert exported.mlir_module_serialized.startswith(b"ML\xefR\rStableHLO_v1.13.0")
 
     # this function got removed
     # https://github.com/jax-ml/jax/commit/56646afaca5f77d121105419d144de0033efb1bc
@@ -57,7 +57,7 @@ def test_mlir_module_directly():
 
 def test_stablehlo_dialect():
     # these functions are described in https://openxla.org/stablehlo/compatibility
-    assert stablehlo.get_current_version() == "1.13.1"
+    assert stablehlo.get_current_version() == "1.13.3"
     assert stablehlo.get_minimum_version() == "0.9.0"
 
 
