@@ -566,12 +566,12 @@ def test_nondefault_device(capsys):
 
     assert generalize(capsys.readouterr().out) == """
 ╭────────────────╮
-│ shape: (16,)       │
-│ dtype: float32     │
-│ size: 64.0 B       │
+│ shape: (16,)   │
+│ dtype: float32 │
+│ size: 64.0 B   │
 │ device: cpu:2  │
-│ not sharded        │
-╰────────────────────╯
+│ not sharded    │
+╰────────────────╯
 """.lstrip()
 
 
