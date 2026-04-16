@@ -157,11 +157,10 @@ def run_host_local_array_to_global_array():
 
     global_arr = host_local_array_to_global_array(local_subset, mesh, P("gpus"))
     sharding_info(global_arr, "global_array")
-    print(original_array.shape, global_arr.shape)
     assert original_array.shape == global_arr.shape
 
     # check that the array didn't change
-    collected_again = process_allgather(global_arr)
+    collected_again = process_allgather(global_arr, tiled=True)
     assert jax.numpy.allclose(collected_again, original_array)
 
 
