@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from jax._src.config import use_shardy_partitioner
 from jax.experimental import mesh_utils
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 from jaxlib.xla_client import XlaRuntimeError
 
@@ -214,44 +214,6 @@ def test_in_jit(capsys):
 │       │       │       │       │       │       │       │       │
 │       │       │       │       │       │       │       │       │
 └───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
-""".lstrip()
-
-
-def test_pmap(capsys):
-    arr = jax.numpy.zeros(shape=(8, 8 * 3), dtype=jax.numpy.complex64)
-    arr = jax.pmap(lambda x: x ** 2)(arr)
-    sharding_info(arr)
-    sharding_vis(arr)
-
-    assert generalize(capsys.readouterr().out) == """
-╭──────────────────────────────────────────────────────────────────────╮
-│ shape: (8, 24)                                                       │
-│ dtype: complex64                                                     │
-│ size: 1.5 KiB                                                        │
-│ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
-│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
-│ device_platform=CPU, device_shape=(8,))                              │
-│ axis 0 is sharded: CPU 0 contains 0:1 (1/8)                          │
-│                    Total size: 8                                     │
-╰──────────────────────────────────────────────────────────────────────╯
-Output for PmapSharding might be incorrect
-┌─────────────────────────────────────────────────────────────────────────┐
-│                                  CPU 0                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                  CPU 1                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                  CPU 2                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                  CPU 3                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                  CPU 4                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                  CPU 5                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                  CPU 6                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                  CPU 7                                  │
-└─────────────────────────────────────────────────────────────────────────┘
 """.lstrip()
 
 
@@ -525,56 +487,6 @@ def test_inside_shard_map_simple(capsys):
 """.lstrip()
 
 
-@pytest.mark.xfail(reason="it seems like this is no longer the case with jax 0.7.0 and shardy")
-def test_indirectly_sharded(capsys):
-    """
-    y is never explicitly sharded, but it seems like the sharding is back-propagated through the jit compiled function
-    """
-    arr = jax.numpy.zeros(shape=(16, 16, 16))
-
-    def func(x):
-        y = jax.numpy.zeros(shape=(16, 16, 16))
-        sharding_info(y)
-        return x * y
-
-    func = jax.jit(func, out_shardings=simple_sharding)
-    arr = func(arr)
-    assert generalize(capsys.readouterr().out) == """
-╭─────────────────────────────────────────────╮
-│ shape: (16, 16, 16)                         │
-│ dtype: float32                              │
-│ size: 16.0 KiB                              │
-│ called in jit                               │
-│ NamedSharding: P(None, 'gpus')              │
-│ axis 1 is sharded: CPU 0 contains 0:2 (1/8) │
-│                    Total size: 16           │
-╰─────────────────────────────────────────────╯
-""".lstrip()
-
-    # doing this with shardy seems to not print the back-propagated sharding
-    with use_shardy_partitioner(True):
-        func = jax.jit(func, out_shardings=simple_sharding)
-        arr = func(arr)
-        sharding_info(arr, "output")
-        assert generalize(capsys.readouterr().out) == """
-╭─────────────────────╮
-│ shape: (16, 16, 16) │
-│ dtype: float32      │
-│ size: 16.0 KiB      │
-│ called in jit       │
-│ NamedSharding: P()  │
-╰─────────────────────╯
-╭────────────────── output ───────────────────╮
-│ shape: (16, 16, 16)                         │
-│ dtype: float32                              │
-│ size: 16.0 KiB                              │
-│ NamedSharding: P(None, 'gpus')              │
-│ axis 1 is sharded: CPU 0 contains 0:2 (1/8) │
-│                    Total size: 16           │
-╰─────────────────────────────────────────────╯
-""".lstrip()
-
-
 def test_with_sharding_constraint(capsys):
     arr = jax.numpy.zeros(shape=(16, 16, 16))
 
@@ -653,64 +565,13 @@ def test_nondefault_device(capsys):
     sharding_info(some_array_on_one_device)
 
     assert generalize(capsys.readouterr().out) == """
-╭────────────────────╮
-│ shape: (16,)       │
-│ dtype: float32     │
-│ size: 64.0 B       │
-│ device: TFRT_CPU_2 │
-│ not sharded        │
-╰────────────────────╯
-""".lstrip()
-
-
-def test_device_put_replicated(capsys):
-    some_array = jax.numpy.zeros(16)
-    replicated_array = jax.device_put_replicated(some_array, jax.devices())
-    sharding_info(replicated_array)
-
-    assert generalize(capsys.readouterr().out) == """
-╭──────────────────────────────────────────────────────────────────────╮
-│ shape: (8, 16)                                                       │
-│ dtype: float32                                                       │
-│ size: 512.0 B                                                        │
-│ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
-│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
-│ device_platform=CPU, device_shape=(8,))                              │
-│ axis 0 is sharded: CPU 0 contains 0:1 (1/8)                          │
-│                    Total size: 8                                     │
-╰──────────────────────────────────────────────────────────────────────╯
-""".lstrip()
-
-
-def test_device_put_sharded(capsys):
-    list_of_arrays = []
-    for i in range(len(jax.devices())):
-        some_array = jax.numpy.full((3,), i)
-        list_of_arrays.append(some_array)
-    replicated_array = jax.device_put_sharded(list_of_arrays, jax.devices())
-    sharding_info(replicated_array)
-    reference = jax.numpy.array([[0, 0, 0],
-                                 [1, 1, 1],
-                                 [2, 2, 2],
-                                 [3, 3, 3],
-                                 [4, 4, 4],
-                                 [5, 5, 5],
-                                 [6, 6, 6],
-                                 [7, 7, 7]])
-    assert jax.numpy.all(replicated_array == reference)
-
-    assert generalize(capsys.readouterr().out) == """
-╭──────────────────────────────────────────────────────────────────────╮
-│ shape: (8, 3)                                                        │
-│ dtype: int32                                                         │
-│ size: 96.0 B                                                         │
-│ weakly-typed                                                         │
-│ PmapSharding(sharding_spec=ShardingSpec((Chunked(8), NoSharding()),  │
-│ (ShardedAxis(axis=0),)), device_ids=[0, 1, 2, 3, 4, 5, 6, 7],        │
-│ device_platform=CPU, device_shape=(8,))                              │
-│ axis 0 is sharded: CPU 0 contains 0:1 (1/8)                          │
-│                    Total size: 8                                     │
-╰──────────────────────────────────────────────────────────────────────╯
+╭────────────────╮
+│ shape: (16,)   │
+│ dtype: float32 │
+│ size: 64.0 B   │
+│ device: cpu:2  │
+│ not sharded    │
+╰────────────────╯
 """.lstrip()
 
 
@@ -863,7 +724,7 @@ def test_containing_map_abstract():
         # while normally one should always set enable_x64 globally,
         # for this test it also works if we switch it up here
         # as we compile everything inside the context manager without global state
-        with jax.experimental.enable_x64(use_double_precision):
+        with jax.enable_x64(use_double_precision):
             for f in [f_using_map, f_using_scan, f_using_dynamic_update_slice]:
                 jitted_f = jax.jit(f)
                 # this seems to be independent of the dtype of the input array, so try a few of them
@@ -894,91 +755,6 @@ def test_containing_map_abstract():
                         assert "= pred[] compare(" in exception_message
                         assert f"op_name=\"jit({f.__name__})" in exception_message
                         # print(e.value.args[0])  # full exception
-
-
-def test_fft_in_scan():
-    def get_mesh() -> Mesh:
-        """
-        get a Mesh using all devices along one axis called "gpus"
-        """
-        num_gpus = jax.device_count()
-        devices = mesh_utils.create_device_mesh((num_gpus,))
-        return Mesh(devices, axis_names=('gpus',))
-
-    with jax.experimental.enable_x64():
-        ext_res = 128
-        dtype_c = jax.numpy.complex128
-        from fft_utils import _rfftn, _irfftn
-        # from fft import rfftn, irfftn
-        device_mesh = get_mesh()
-        # rfftn = jitted_rfftn(device_mesh)
-        # irfftn = jitted_irfftn(device_mesh)
-        sharding = NamedSharding(device_mesh, P(None, "gpus"))
-
-        rfftn = jax.jit(
-            # _rfftn,
-            _rfftn,
-            in_shardings=sharding,
-            out_shardings=sharding,
-        )
-        irfftn = jax.jit(
-            # _irfftn,
-            _irfftn,
-            in_shardings=sharding,
-            out_shardings=sharding,
-        )
-
-        def test():
-            @jax.jit
-            def update(A, i, j, k, l, s):
-                # indices:
-                # i: coordinate of A in first term
-                # j: coordinate of A in second term
-                # k: direction of derivative in first term
-                # l: direction of derivative in second term
-                # s: sign
-
-                ff1 = jax.numpy.zeros((ext_res, ext_res, ext_res // 2 + 1), dtype=jax.numpy.complex128)
-                ff2 = jax.numpy.zeros((ext_res, ext_res, ext_res // 2 + 1), dtype=jax.numpy.complex128)
-
-                # fft = np.fft.fftn if full else rfftn
-                # ifft = np.fft.ifftn if full else irfftn
-                def ifft(input):
-                    print("ifft")
-                    print("input", input)
-
-                    return irfftn(input)
-
-                def fft(input):
-                    print("fft")
-                    print("input", input)
-                    return rfftn(input)
-
-                print("ff1,ff2")
-                print(ff1)
-                print(ff2)
-
-                return fft(ifft(ff1) * ifft(ff2))
-
-            # Define the lists
-            i_list = np.array([0, 0, 1, 0, 0, 1])
-            j_list = np.array([1, 2, 2, 1, 2, 2])
-            k_list = np.array([0, 0, 1, 1, 2, 2])
-            l_list = np.array([1, 2, 2, 0, 0, 1])
-            s_list = np.array([1, 1, 1, -1, -1, -1], dtype=dtype_c)
-
-            def scan_body(carry, x):
-                i, j, k, l, s = x
-                carry += update(None, i, j, k, l, s)
-                return carry, None
-
-            return jax.lax.scan(scan_body, init=np.zeros((ext_res, ext_res, ext_res // 2 + 1), dtype=dtype_c),
-                                xs=(i_list, j_list, k_list, l_list, s_list))[0]
-
-        test = jax.jit(test)
-        out = test()
-        out.block_until_ready()
-        print("finished")
 
 
 def test_array_stats(capsys):
@@ -1123,7 +899,7 @@ def test_memory_stats(capsys):
         'largest_free_block_bytes': 0, 'pool_bytes': 35714334720, 'peak_pool_bytes': 35714334720
     })
     assert capsys.readouterr().out == """
-             Memory Stats of TFRT_CPU_0              
+                Memory Stats of cpu:0                
                      222 allocs                      
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━┓
 ┃ name                     ┃     size ┃  size (raw) ┃

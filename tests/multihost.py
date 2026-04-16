@@ -10,7 +10,7 @@ import jax.distributed
 import numpy as onp
 from jax.experimental import mesh_utils
 from jax.experimental.multihost_utils import process_allgather, broadcast_one_to_all, host_local_array_to_global_array
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 
 from jax_array_info import sharding_info, sharding_vis, print_array_stats, simple_array_info
@@ -35,6 +35,7 @@ jax.distributed.initialize(
 )
 devices = mesh_utils.create_device_mesh((num_processes,))
 mesh = Mesh(devices, axis_names=('gpus',))
+jax.set_mesh(mesh)
 simple_sharding = NamedSharding(mesh, P(None, "gpus"))
 
 
@@ -156,6 +157,7 @@ def run_host_local_array_to_global_array():
 
     global_arr = host_local_array_to_global_array(local_subset, mesh, P("gpus"))
     sharding_info(global_arr, "global_array")
+    print(original_array.shape, global_arr.shape)
     assert original_array.shape == global_arr.shape
 
     # check that the array didn't change
@@ -169,7 +171,7 @@ def run_process_allgather():
     """
     arr = get_sharded_array((128, 128))
     assert not arr.is_fully_addressable
-    arr_np = process_allgather(arr)
+    arr_np = process_allgather(arr, tiled=True)
     assert isinstance(arr_np, onp.ndarray)
     sharding_info(arr_np, "arr_np")
     assert arr_np.shape == arr.shape

@@ -6,7 +6,7 @@ import rich
 from jax import Array, Device
 from jax.core import Tracer
 from jax.debug import inspect_array_sharding
-from jax.sharding import Sharding, NamedSharding, SingleDeviceSharding, PmapSharding
+from jax.sharding import Sharding, NamedSharding, SingleDeviceSharding
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -121,9 +121,6 @@ def _print_sharding_info_raw(arr: SupportedArray, sharding: Optional[Sharding], 
                 if val in arr.vma:
                     vma_axes.add(i)
 
-    if isinstance(sharding, PmapSharding):
-        console.print(sharding)
-        # return
     device_indices_map = sharding.devices_indices_map(tuple(shape))
     slcs = next(iter(device_indices_map.values()))
     sl: slice
@@ -162,11 +159,11 @@ def print_sharding_info(arr: SupportedArray, sharding: Optional[Sharding], name:
     with console.capture() as capture:
         sharded_axes, vma_axes = _print_sharding_info_raw(arr, sharding, console)
     str_output = capture.get()
-    text = Text.from_ansi(str_output)
+    text = Text.from_ansi(str_output.rstrip("\n"))
     with console.capture() as capture:
         shape_text = format_shape(arr.shape, sharded_axes, vma_axes)
         console.print("shape:",shape_text)
     str_output = capture.get()
     text_shape = Text.from_ansi(str_output)
 
-    console.print(Panel(text_shape + "\n" + text, expand=False, title=f"[bold]{name}" if name is not None else None))
+    console.print(Panel(text_shape + text, expand=False, title=f"[bold]{name}" if name is not None else None))
